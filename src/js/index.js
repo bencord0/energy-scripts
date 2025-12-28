@@ -110,9 +110,19 @@ const plot = Plot.plot({
         }),
         Plot.axisY({
             anchor: "right",
-            label: "rate / cost (p)",
+            label: "rate (p/kWh), cost (p)",
             tickFormat: y => (y * scaleFactor).toFixed(0),
         }),
+        Plot.tip(data, Plot.pointerX({
+            x: "timestamp",
+            y: d => d.cost / scaleFactor,
+            title: d => [
+                `Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.timestamp)}`,
+                `Consumption: ${d.consumption.toFixed(3)} kWh`,
+                `Rate: ${d.rate.toFixed(2)} p/kWh`,
+                `Cost: ${d.cost.toFixed(2)} p`
+            ].join("\n")
+        })),
     ],
 });
 
