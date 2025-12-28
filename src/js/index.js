@@ -61,19 +61,19 @@ const maxKWh = d3.max(data, d => d.consumption) || 1;
 const maxP = d3.max(data, d => Math.max(d.rate, d.cost)) || 40;
 const scaleFactor = maxP / maxKWh;
 
-let consumptionBar = Plot.lineY(data, {
+let consumption = Plot.lineY(data, {
     x: 'timestamp',
     y: 'consumption',
     stroke: "rgba(0, 127, 200, 0.8)",
 });
-let rateBar = Plot.rectY(data, {
+let rate = Plot.rectY(data, {
     x: 'timestamp',
     y: d => d.rate / scaleFactor,
     interval: d3.timeMinute.every(30),
     fill: "rgba(255, 127, 0, 0.2)",
     mixBlendMode: "multiply",
 });
-let costBar = Plot.rectY(data, {
+let cost = Plot.rectY(data, {
     x: 'timestamp',
     y: d => d.cost / scaleFactor,
     interval: d3.timeMinute.every(30),
@@ -97,16 +97,17 @@ const plot = Plot.plot({
         type: "time",
         label: "timestamp",
         tickFormat: formatTick,
-        ticks: d3.timeHour.every(6),
+        ticks: d3.timeDay.every(2),
+        //ticks: d3.timeHours.every(6),
     },
     y: { grid: true },
     marks: [
-        rateBar,
-        costBar,
-        consumptionBar,
+        rate,
+        cost,
+        consumption,
         Plot.axisY({
             anchor: "left",
-            label: "consumption (kWh)",
+            label: "Used Energy (kWh)",
         }),
         Plot.axisY({
             anchor: "right",
@@ -115,10 +116,14 @@ const plot = Plot.plot({
         }),
         Plot.tip(data, Plot.pointerX({
             x: "timestamp",
-            y: d => d.cost / scaleFactor,
+            y: d => d3.max([
+                d.cost / scaleFactor,
+                d.rate / scaleFactor,
+                d.consumption,
+            ]),
             title: d => [
                 `Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.timestamp)}`,
-                `Consumption: ${d.consumption.toFixed(3)} kWh`,
+                `Usage: ${d.consumption.toFixed(3)} kWh`,
                 `Rate: ${d.rate.toFixed(2)} p/kWh`,
                 `Cost: ${d.cost.toFixed(2)} p`
             ].join("\n")
