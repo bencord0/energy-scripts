@@ -31,7 +31,7 @@ def main():
         period_from = datetime.fromisoformat(_from).replace(
             hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
     else:
-        period_from = yesterday
+        period_from = daybefore
 
     if args.to:
         period_to = datetime.fromisoformat(args.to).replace(
