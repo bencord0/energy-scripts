@@ -1,0 +1,552 @@
+{
+  "code": "AGILE-24-10-01",
+  "full_name": "Agile Octopus October 2024 v1",
+  "display_name": "Agile Octopus",
+  "description": "With Agile Octopus, you get access to half-hourly energy prices, tied to wholesale prices and updated daily.  The unit rate is capped at 100p/kWh (including VAT).",
+  "is_variable": true,
+  "is_green": true,
+  "is_tracker": false,
+  "is_prepay": false,
+  "is_business": false,
+  "is_restricted": false,
+  "term": 12,
+  "available_from": "2024-10-01T00:00:00+01:00",
+  "available_to": null,
+  "tariffs_active_at": "2025-12-27T22:10:57.437422Z",
+  "single_register_electricity_tariffs": {
+    "_A": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-A",
+        "standing_charge_exc_vat": 46.4649,
+        "standing_charge_inc_vat": 48.788145,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-A/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-A/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_B": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-B",
+        "standing_charge_exc_vat": 52.2352,
+        "standing_charge_inc_vat": 54.84696,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-B/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-B/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 15.58,
+        "standard_unit_rate_inc_vat": 16.359
+      }
+    },
+    "_C": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-C",
+        "standing_charge_exc_vat": 37.6525,
+        "standing_charge_inc_vat": 39.535125,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-C/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-C/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 15.58,
+        "standard_unit_rate_inc_vat": 16.359
+      }
+    },
+    "_D": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-D",
+        "standing_charge_exc_vat": 62.7004,
+        "standing_charge_inc_vat": 65.83542,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-D/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-D/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 17.14,
+        "standard_unit_rate_inc_vat": 17.997
+      }
+    },
+    "_E": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-E",
+        "standing_charge_exc_vat": 58.6296,
+        "standing_charge_inc_vat": 61.56108,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-E/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-E/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_F": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-F",
+        "standing_charge_exc_vat": 66.7126,
+        "standing_charge_inc_vat": 70.04823,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-F/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-F/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_G": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-G",
+        "standing_charge_exc_vat": 47.6032,
+        "standing_charge_inc_vat": 49.98336,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-G/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-G/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_H": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-H",
+        "standing_charge_exc_vat": 59.2617,
+        "standing_charge_inc_vat": 62.224785,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-H/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-H/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_J": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-J",
+        "standing_charge_exc_vat": 53.1292,
+        "standing_charge_inc_vat": 55.78566,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-J/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-J/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 17.14,
+        "standard_unit_rate_inc_vat": 17.997
+      }
+    },
+    "_K": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-K",
+        "standing_charge_exc_vat": 59.1087,
+        "standing_charge_inc_vat": 62.064135,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-K/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-K/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 17.14,
+        "standard_unit_rate_inc_vat": 17.997
+      }
+    },
+    "_L": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-L",
+        "standing_charge_exc_vat": 62.9201,
+        "standing_charge_inc_vat": 66.066105,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-L/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-L/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 17.92,
+        "standard_unit_rate_inc_vat": 18.816
+      }
+    },
+    "_M": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-M",
+        "standing_charge_exc_vat": 63.1074,
+        "standing_charge_inc_vat": 66.26277,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-M/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-M/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 15.58,
+        "standard_unit_rate_inc_vat": 16.359
+      }
+    },
+    "_N": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-N",
+        "standing_charge_exc_vat": 59.1606,
+        "standing_charge_inc_vat": 62.11863,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-N/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-N/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 16.36,
+        "standard_unit_rate_inc_vat": 17.178
+      }
+    },
+    "_P": {
+      "direct_debit_monthly": {
+        "code": "E-1R-AGILE-24-10-01-P",
+        "standing_charge_exc_vat": 57.0745,
+        "standing_charge_inc_vat": 59.928225,
+        "online_discount_exc_vat": 0,
+        "online_discount_inc_vat": 0.0,
+        "dual_fuel_discount_exc_vat": 0,
+        "dual_fuel_discount_inc_vat": 0.0,
+        "exit_fees_exc_vat": 0,
+        "exit_fees_inc_vat": 0,
+        "exit_fees_type": "NONE",
+        "links": [
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-P/standing-charges/",
+            "method": "GET",
+            "rel": "standing_charges"
+          },
+          {
+            "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/electricity-tariffs/E-1R-AGILE-24-10-01-P/standard-unit-rates/",
+            "method": "GET",
+            "rel": "standard_unit_rates"
+          }
+        ],
+        "standard_unit_rate_exc_vat": 18.7,
+        "standard_unit_rate_inc_vat": 19.635
+      }
+    }
+  },
+  "dual_register_electricity_tariffs": {},
+  "single_register_gas_tariffs": {},
+  "sample_quotes": {
+    "_A": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 64188,
+          "annual_cost_exc_vat": 61132
+        }
+      }
+    },
+    "_B": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 64188,
+          "annual_cost_exc_vat": 61132
+        }
+      }
+    },
+    "_C": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 58600,
+          "annual_cost_exc_vat": 55809
+        }
+      }
+    },
+    "_D": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 72622,
+          "annual_cost_exc_vat": 69164
+        }
+      }
+    },
+    "_E": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 68850,
+          "annual_cost_exc_vat": 65572
+        }
+      }
+    },
+    "_F": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 71948,
+          "annual_cost_exc_vat": 68522
+        }
+      }
+    },
+    "_G": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 64625,
+          "annual_cost_exc_vat": 61547
+        }
+      }
+    },
+    "_H": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 69093,
+          "annual_cost_exc_vat": 65803
+        }
+      }
+    },
+    "_J": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 68954,
+          "annual_cost_exc_vat": 65670
+        }
+      }
+    },
+    "_K": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 71245,
+          "annual_cost_exc_vat": 67853
+        }
+      }
+    },
+    "_L": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 74917,
+          "annual_cost_exc_vat": 71350
+        }
+      }
+    },
+    "_M": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 68355,
+          "annual_cost_exc_vat": 65100
+        }
+      }
+    },
+    "_N": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 69054,
+          "annual_cost_exc_vat": 65766
+        }
+      }
+    },
+    "_P": {
+      "direct_debit_monthly": {
+        "electricity_single_rate": {
+          "annual_cost_inc_vat": 74888,
+          "annual_cost_exc_vat": 71322
+        }
+      }
+    }
+  },
+  "sample_consumption": {
+    "electricity_single_rate": {
+      "electricity_standard": 2700
+    },
+    "electricity_dual_rate": {
+      "electricity_day": 2262,
+      "electricity_night": 1638
+    },
+    "dual_fuel_single_rate": {
+      "electricity_standard": 2700,
+      "gas_standard": 11500
+    },
+    "dual_fuel_dual_rate": {
+      "electricity_day": 2262,
+      "electricity_night": 1638,
+      "gas_standard": 11500
+    }
+  },
+  "links": [
+    {
+      "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/",
+      "method": "GET",
+      "rel": "self"
+    }
+  ],
+  "brand": "OCTOPUS_ENERGY"
+}
