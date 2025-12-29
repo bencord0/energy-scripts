@@ -89,41 +89,112 @@ function render() {
         }
     }
 
-    const maxX = d3.max(data, d => d.rate);
+    const maxX = d3.max(data, d => d.rate) || 0;
     const ceilX = Math.ceil(maxX / 10) * 10;
+    const interval = 0.5;
+
+    // 1. Pre-calculate bins
+    const thresholds = d3.range(0, ceilX + interval, interval);
+    const binFn = d3.bin()
+        .value(d => d.rate)
+        .domain([0, ceilX])
+        .thresholds(thresholds);
+
+    const inputs = binFn(data).map(bin => {
+        // bin is an array of data points, with x0 and x1
+        const consumption = d3.sum(bin, d => d.consumption);
+        const cost = d3.sum(bin, d => d.cost);
+        return {
+            rate_start: bin.x0,
+            rate_end: bin.x1,
+            rate_mid: (bin.x0 + bin.x1) / 2,
+            consumption: consumption,
+            cost: cost
+        };
+    }).filter(d => d.consumption > 0);
+
+    const maxY = d3.max(inputs, d => d.cost) || 0;
+
+    // 2. Generate Iso-Usage Lines
+    // Cost (y) = Usage (m) * Rate (x)
+    // These are straight lines y = mx
+    // Find roughly the max usage in a bin to determine steps
+    const maxBarUsage = d3.max(inputs, d => d.consumption) || 0;
+
+    // Determine order of magnitude for steps
+    const stepUsage = Math.pow(10, Math.floor(Math.log10(maxBarUsage || 1)));
+    const isoUsage = [];
+
+    // Generate 1x, 2x, 5x, 10x steps
+    [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50].forEach(m => {
+        const u = stepUsage * m;
+        // Filter out lines that are too small or too large relative to data
+        if (u > maxBarUsage * 1.5 && u > (maxY / (ceilX || 1))) return;
+        if (u < maxBarUsage / 20) return;
+
+        // Line: y = u * x
+        // x2 is either the max of chart or where it hits top of chart
+        // y2 = u * ceilX
+        const x2 = ceilX;
+        const y2 = u * x2;
+
+        const line = [{ x: 0, y: 0, u: u }];
+        line.push({ x: x2, y: y2, u: u });
+
+        isoUsage.push(line);
+    });
 
     const plot = Plot.plot({
         height: window.innerHeight - 40,
         width: window.innerWidth - 40,
         x: {
             label: "rate (p/kWh)",
-            ticks: ceilX / 5,
             domain: [0, ceilX],
         },
         y: {
-            label: "usage (kWh)",
+            label: "Cost",
             grid: true,
+            domain: [0, maxY * 1.1], // give some headroom
         },
         marks: [
-            // Cost
-            Plot.rectY(data, Plot.binX({
-                y: "sum",
-                title: (bin) => {
-                    const rate = d3.min(bin, d => d.rate);
-                    const usage = d3.sum(bin, d => d.consumption);
-                    const cost = d3.sum(bin, d => d.cost);
-                    return `Rate: ${rate.toFixed(2)}p/kWh\nUsage: ${usage.toFixed(3)} kWh\nCost: ${formatCost(cost)}`;
-                }
-            }, {
-                x: "rate",
-                y: "consumption",
-                title: (d) => d,
-                fill: "steelblue",
-                interval: 0.5,
-                tip: true
+            // Iso-Usage Lines (Radiating lines)
+            isoUsage.map(curve => Plot.line(curve, {
+                x: "x",
+                y: "y",
+                stroke: "pink",
+                strokeDasharray: "4,4",
+                strokeWidth: 1
             })),
-            Plot.axisY({ anchor: "left", label: "Used Energy (kWh)" }),
+            isoUsage.map(curve => {
+                const last = curve[1];
+                return Plot.text([last], {
+                    x: "x",
+                    y: "y",
+                    text: d => `${d.u.toFixed(1)} kWh`,
+                    fill: "pink",
+                    dx: 5,
+                    dy: -5,
+                    textAnchor: "start"
+                });
+            }),
+
+            // Cost Bars
+            Plot.rectY(inputs, {
+                x1: "rate_start",
+                x2: "rate_end",
+                y: "cost",
+                fill: "steelblue",
+                tip: true,
+                title: d => `Rate: ${d.rate_start} - ${d.rate_end} p/kWh\nUsage: ${d.consumption.toFixed(3)} kWh\nCost: ${formatCost(d.cost)}`
+            }),
+            Plot.axisY({
+                anchor: "left",
+                label: "Cost",
+                tickFormat: (d) => `£${(d / 100).toFixed(2)}`
+            }),
         ],
+        marginRight: 80, // space for iso labels
+        marginLeft: 60,
     });
 
     const chart = document.getElementById("chart");
