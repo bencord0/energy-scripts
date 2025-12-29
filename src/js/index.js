@@ -2,23 +2,24 @@ import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-// https://observablehq.com/blog/reshaping-data-plot-d3
-// https://r4ds.had.co.nz/tidy-data.html
-// Expect data in a "tidy" format.
-var data = [];
-
-async function getDatabaseBuffer() {
+async function getDataBuffer() {
     const cacheName = 'octopus-data-v1';
     const url = '/data/power.sqlite3';
 
     // Speed up first page load if we have visited the site before
-    // TODO: Set a cache key based on etag.
     if ('caches' in window) {
         const cache = await caches.open(cacheName);
         const cachedResponse = await cache.match(url);
+
         if (cachedResponse) {
-            console.log('Using cached database');
-            return await cachedResponse.arrayBuffer();
+            let lastModified = new Date(cachedResponse.headers.get('last-modified'));
+            let cacheResetTime = new Date(new Date().setHours(16, 0, 0, 0));
+            let now = new Date();
+
+            if (lastModified < cacheResetTime && now < cacheResetTime) {
+                console.log('Using cached database');
+                return await cachedResponse.arrayBuffer();
+            }
         }
         console.log('Fetching database and caching...');
         const response = await fetch(url);
@@ -29,9 +30,9 @@ async function getDatabaseBuffer() {
     return await fetch(url).then(res => res.arrayBuffer());
 }
 
-const [sqlite3, arrayBuffer] = await Promise.all([
+const [sqlite3, dataBuffer] = await Promise.all([
     sqlite3WasmInit(),
-    getDatabaseBuffer()
+    getDataBuffer()
 ]);
 window.sqlite3 = sqlite3; // for debugging
 
@@ -42,32 +43,29 @@ window.db = db; // for debugging
 const rc = sqlite3.capi.sqlite3_deserialize(
     db.pointer,
     'main', // primary database schema to overwrite
-    sqlite3.wasm.allocFromTypedArray(arrayBuffer),
-    arrayBuffer.byteLength,
-    arrayBuffer.byteLength,
+    sqlite3.wasm.allocFromTypedArray(dataBuffer),
+    dataBuffer.byteLength,
+    dataBuffer.byteLength,
     sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
 );
+// throws SQLite3Error
 db.checkRc(rc);
 
 const urlParams = new URLSearchParams(window.location.search);
 
-let startDate, endDate;
+const millisecondsPerDay = 864e5;
+let today = new Date().setHours(0, 0, 0, 0);
+let yesterday = new Date(today - millisecondsPerDay);
+let dayBefore = new Date(yesterday - millisecondsPerDay);
+let startDate = new Date(urlParams.get('start') || dayBefore);
+let endDate = new Date(urlParams.get('end') || yesterday);
 
-if (urlParams.has('start') && urlParams.has('end')) {
-    startDate = new Date(urlParams.get('start'));
-    endDate = new Date(urlParams.get('end'));
-} else {
-    // Fallback if no data or error: 2 days ago to yesterday
-    const msPerDay = 864e5;
-    const [dayBefore, yesterday] = [2, 1].map(d => new Date(new Date().setHours(0, 0, 0, 0) - d * msPerDay));
-    startDate = dayBefore;
-    endDate = yesterday;
-}
-
-let urlDebounceTimeout;
+let urlDebouncer;
 function updateUrlDebounced(startStr, endStr) {
-    clearTimeout(urlDebounceTimeout);
-    urlDebounceTimeout = setTimeout(() => {
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/clearTimeout
+    clearTimeout(urlDebouncer);
+    urlDebouncer = setTimeout(() => {
         const url = new URL(window.location);
         url.searchParams.set('start', startStr);
         url.searchParams.set('end', endStr);
@@ -76,7 +74,11 @@ function updateUrlDebounced(startStr, endStr) {
 }
 
 function render() {
+    // https://observablehq.com/blog/reshaping-data-plot-d3
+    // https://r4ds.had.co.nz/tidy-data.html
+    // Expect data in a "tidy" format.
     const data = [];
+
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
@@ -92,7 +94,7 @@ function render() {
                 date(c.interval_start) || 'T00:00:00Z',
                 sum(c.consumption),
                 avg(r.value),
-                sum(c.consumption * r.value)
+                sum(c.consumption * r.value) as cost
             FROM consumption as c
             LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
             WHERE c.interval_start >= $start AND c.interval_start < $end
@@ -107,7 +109,7 @@ function render() {
                 strftime('%Y-%m-%dT%H:00:00Z', c.interval_start),
                 sum(c.consumption),
                 avg(r.value),
-                sum(c.consumption * r.value)
+                sum(c.consumption * r.value) as cost
             FROM consumption as c
             LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
             WHERE c.interval_start >= $start AND c.interval_start < $end
@@ -161,6 +163,7 @@ function render() {
     }
 
     const plot = Plot.plot({
+        height: window.innerHeight - 40,
         width: window.innerWidth - 40,
         x: {
             type: "time",
@@ -235,9 +238,6 @@ function render() {
     const plotDiv = document.getElementById("plot");
     if (plotDiv) {
         plotDiv.replaceChildren(plot);
-    } else {
-        // Fallback (though structure should be in index.html)
-        chart.appendChild(plot);
     }
 
     // Calculate total cost
@@ -252,6 +252,8 @@ function render() {
     const avgHourlyCost = hoursFromData > 0 ? totalCost / hoursFromData : 0;
 
     // Calculate average rate (independent of consumption)
+    // This will vary depending on the time-of-use tariff, e.g. Octopus Agile.
+    // For Fixed and Flexible tariffs, this is (mostly) constant.
     const avgRate = data.length > 0
         ? data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length
         : 0;
@@ -276,13 +278,13 @@ function render() {
         ? Math.max(...data.map(d => (d.consumption || 0) / intervalHours))
         : 0;
 
-    // Format cost display: £ for values over 100p, p for values 100p or less
+    // Format cost display: £ for values over 100p
     function formatCost(cost) {
         if (cost > 100) {
             const pounds = cost / 100;
             return `£${pounds.toFixed(2)}`;
         } else {
-            return `${cost.toFixed(2)}`;
+            return `${cost.toFixed(2)}p`;
         }
     }
 
