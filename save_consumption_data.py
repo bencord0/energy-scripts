@@ -59,6 +59,7 @@ def migrate_db(connection):
                 consumption    REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
                 PRIMARY KEY (account, interval_start)
             );
+            CREATE INDEX IF NOT EXISTS idx_consumption_start ON consumption(interval_start);
             COMMIT;
         ''')
 

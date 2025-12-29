@@ -8,12 +8,41 @@
     <link rel="modulepreload" href="/js/d3.esm.min.js">
     <link rel="modulepreload" href="/js/plot.esm.min.js">
     <link rel="modulepreload" href="/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs">
-    <link rel="preload" href="/data/power.sqlite3" as="fetch" crossorigin>
+    <!-- Does not need to be preloaded each time the page loads
+      <link rel="preload" href="/data/power.sqlite3" as="fetch" crossorigin>
+    -->
     <link rel="stylesheet" href="/css/spinner.css">
+    <link rel="stylesheet" href="/css/summary.css">
 </head>
 
 <body>
     <div id="chart">
+        <div id="plot"></div>
+        <div id="cost-summary">
+            <div class="column">
+                <div class="section-header">Time</div>
+                <div class="label">Period</div>
+                <div class="value secondary"><span id="val-period">-</span> <span class="unit">hours</span></div>
+            </div>
+            <div class="column">
+                <div class="section-header">Energy</div>
+                <div class="label">Total</div>
+                <div class="value secondary"><span id="val-power-total">-</span> <span class="unit">kWh</span></div>
+                <div class="label">Average Power</div>
+                <div class="value secondary"><span id="val-power-avg">-</span> <span class="unit">kW</span></div>
+                <div class="label">Maximum Power</div>
+                <div class="value secondary"><span id="val-power-max">-</span> <span class="unit">kW</span></div>
+            </div>
+            <div class="column">
+                <div class="section-header">Cost</div>
+                <div class="label">Total</div>
+                <div class="value" id="val-cost-total">-</div>
+                <div class="label">Average Hourly Rate</div>
+                <div class="value secondary"><span id="val-cost-hourly">-</span> <span class="unit">p/hour</span></div>
+                <div class="label">Equivalent Rate</div>
+                <div class="value secondary"><span id="val-cost-rate">-</span> <span class="unit">p/kWh</span></div>
+            </div>
+        </div>
         <div class="spinner"></div>
     </div>
 

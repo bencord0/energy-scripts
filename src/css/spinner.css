@@ -5,6 +5,7 @@ body {
 }
 
 #chart {
+    position: relative;
     min-height: 400px;
     display: flex;
     align-items: center;
