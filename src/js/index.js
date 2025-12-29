@@ -61,6 +61,26 @@ const maxKWh = d3.max(data, d => d.consumption) || 1;
 const maxP = d3.max(data, d => Math.max(d.rate, d.cost)) || 40;
 const scaleFactor = maxP / maxKWh;
 
+const [minDate, maxDate] = d3.extent(data, d => d.timestamp);
+const durationHours = (maxDate - minDate) / (1000 * 60 * 60);
+
+function formatTick(d) {
+    const isMidnight = d.getHours() === 0 && d.getMinutes() === 0;
+    if (durationHours <= 24) {
+        return d3.timeFormat("%H:%M")(d);
+    }
+    if (isMidnight) {
+        if (d.getMonth() === 0 && d.getDate() === 1) {
+            return d3.timeFormat("%Y")(d);
+        }
+        return d3.timeFormat("%b %d")(d);
+    }
+    if (durationHours > 48) {
+        return "";
+    }
+    return d3.timeFormat("%H:%M")(d);
+}
+
 let consumption = Plot.lineY(data, {
     x: 'timestamp',
     y: 'consumption',
@@ -81,15 +101,6 @@ let cost = Plot.rectY(data, {
     mixBlendMode: "multiply",
 });
 
-function formatTick(d) {
-    if (d.getHours() === 0) {
-        if (d.getMonth() === 0 && d.getDate() === 1) {
-            return d3.timeFormat("%Y")(d);
-        }
-        return d3.timeFormat("%b %d")(d);
-    }
-    return d3.timeFormat("%H:%M")(d);
-}
 
 const plot = Plot.plot({
     width: window.innerWidth - 40,
@@ -97,8 +108,7 @@ const plot = Plot.plot({
         type: "time",
         label: "timestamp",
         tickFormat: formatTick,
-        ticks: d3.timeDay.every(2),
-        //ticks: d3.timeHours.every(6),
+        ticks: 12,
     },
     y: { grid: true },
     marks: [
