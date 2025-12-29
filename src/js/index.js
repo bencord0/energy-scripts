@@ -61,7 +61,7 @@ let startDate = new Date(urlParams.get('start') || dayBefore);
 let endDate = new Date(urlParams.get('end') || yesterday);
 
 let urlDebouncer;
-function updateUrlDebounced(startStr, endStr) {
+function updateUrl(startStr, endStr) {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/clearTimeout
     clearTimeout(urlDebouncer);
@@ -91,44 +91,44 @@ function render() {
         // More than a month: Group by Day
         sql = `
             SELECT
-                date(c.interval_start) || 'T00:00:00Z',
+                date(r.valid_from) || 'T00:00:00Z',
                 sum(c.consumption),
                 avg(r.value),
                 sum(c.consumption * r.value) as cost
-            FROM consumption as c
-            LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
-            WHERE c.interval_start >= $start AND c.interval_start < $end
-            GROUP BY date(c.interval_start)
-            ORDER BY c.interval_start ASC
+            FROM tariff_rates as r
+            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
+            WHERE r.valid_from >= $start AND r.valid_from < $end
+            GROUP BY date(r.valid_from)
+            ORDER BY r.valid_from ASC
         `;
         interval = d3.timeDay;
     } else if (durationHours > 24 * 7) {
         // More than a week: Group by Hour
         sql = `
             SELECT
-                strftime('%Y-%m-%dT%H:00:00Z', c.interval_start),
+                strftime('%Y-%m-%dT%H:00:00Z', r.valid_from),
                 sum(c.consumption),
                 avg(r.value),
                 sum(c.consumption * r.value) as cost
-            FROM consumption as c
-            LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
-            WHERE c.interval_start >= $start AND c.interval_start < $end
-            GROUP BY strftime('%Y-%m-%dT%H', c.interval_start)
-            ORDER BY c.interval_start ASC
+            FROM tariff_rates as r
+            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
+            WHERE r.valid_from >= $start AND r.valid_from < $end
+            GROUP BY strftime('%Y-%m-%dT%H', r.valid_from)
+            ORDER BY r.valid_from ASC
         `;
         interval = d3.timeHour;
     } else {
         // Default: 30 minute intervals
         sql = `
             SELECT
-                c.interval_start,
+                r.valid_from,
                 c.consumption,
                 r.value,
                 (c.consumption * r.value) as cost
-            FROM consumption as c
-            LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
-            WHERE c.interval_start >= $start AND c.interval_start < $end
-            ORDER BY c.interval_start ASC
+            FROM tariff_rates as r
+            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
+            WHERE r.valid_from >= $start AND r.valid_from < $end
+            ORDER BY r.valid_from ASC
         `;
     }
 
@@ -214,14 +214,20 @@ function render() {
                 label: "rate (p/kWh), cost (p)",
                 tickFormat: y => (y * scaleFactor).toFixed(0),
             }),
+            // Current Time Marker
+            Plot.ruleX([new Date()], {
+                stroke: "red",
+                strokeWidth: 2,
+                strokeDasharray: "4,4"
+            }),
             Plot.tip(data, Plot.pointerX({
                 x: "timestamp",
                 y: d => d3.max([d.cost / scaleFactor, d.rate / scaleFactor, d.consumption]),
                 title: d => [
                     `Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.timestamp)}`,
-                    `Usage: ${d.consumption.toFixed(3)} kWh`,
-                    `Rate: ${d.rate.toFixed(2)} p/kWh`,
-                    `Cost: ${d.cost.toFixed(2)} p`
+                    `Usage: ${(d.consumption || 0).toFixed(3)} kWh`,
+                    `Rate: ${(d.rate || 0).toFixed(2)} p/kWh`,
+                    `Cost: ${(d.cost || 0).toFixed(2)} p`
                 ].join("\n")
             })),
         ],
@@ -312,7 +318,7 @@ function render() {
     if (costRateElem) costRateElem.textContent = avgRate.toFixed(2);
 
     // Update URL without refreshing (Debounced)
-    updateUrlDebounced(startStr, endStr);
+    updateUrl(startStr, endStr);
 }
 
 // Initial render
