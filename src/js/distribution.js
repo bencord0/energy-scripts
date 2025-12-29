@@ -51,11 +51,34 @@ const rc = sqlite3.capi.sqlite3_deserialize(
 // throws SQLite3Error
 db.checkRc(rc);
 
+const urlParams = new URLSearchParams(window.location.search);
+
+const millisecondsPerDay = 864e5;
+let today = new Date().setHours(0, 0, 0, 0);
+let yesterday = new Date(today - millisecondsPerDay);
+let dayBefore = new Date(yesterday - millisecondsPerDay);
+let startDate = new Date(urlParams.get('start') || dayBefore);
+let endDate = new Date(urlParams.get('end') || yesterday);
+
+let urlDebouncer;
+function updateUrl(startStr, endStr) {
+    clearTimeout(urlDebouncer);
+    urlDebouncer = setTimeout(() => {
+        const url = new URL(window.location);
+        url.searchParams.set('start', startStr);
+        url.searchParams.set('end', endStr);
+        window.history.replaceState({}, '', url);
+    }, 500);
+}
+
 function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
     const data = [];
+
+    const startStr = startDate.toISOString().slice(0, 16);
+    const endStr = endDate.toISOString().slice(0, 16);
 
     let sql = `
     SELECT
@@ -65,12 +88,16 @@ function render() {
     FROM consumption as c
     LEFT JOIN tariff_rates as r
     ON c.interval_start = r.valid_from
-    WHERE c.interval_start > '2025-12-27'
+    WHERE c.interval_start > $start AND c.interval_end < $end
     GROUP BY r.value
     ORDER BY r.value ASC`;
 
     db.exec({
         sql: sql,
+        bind: {
+            $start: startStr,
+            $end: endStr,
+        },
         callback: (row) => {
             data.push({
                 rate: row[0],
@@ -209,12 +236,40 @@ function render() {
     if (plotDiv) {
         plotDiv.replaceChildren(plot);
     }
+
+    // Update URL without refreshing
+    updateUrl(startStr, endStr);
 }
 
 // Initial render
 render();
 
 let pendingUpdate = false;
+window.addEventListener('wheel', (e) => {
+    e.preventDefault();
+
+    if (e.deltaY !== 0) {
+        startDate.setHours(startDate.getHours() + e.deltaY);
+        if (startDate > dayBefore) {
+            startDate.setTime(dayBefore.getTime());
+        }
+
+        // limit of our data
+        let earliestDay = new Date("2025-12-01");
+        if (startDate < earliestDay) {
+            startDate.setTime(earliestDay.getTime());
+        }
+    }
+
+    if (!pendingUpdate) {
+        pendingUpdate = true;
+        requestAnimationFrame(() => {
+            render();
+            pendingUpdate = false;
+       });
+   }
+}, { passive: false });
+
 window.addEventListener('resize', () => {
     if (!pendingUpdate) {
         pendingUpdate = true;
