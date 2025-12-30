@@ -12,11 +12,11 @@ async function getDataBuffer() {
         const cachedResponse = await cache.match(url);
 
         if (cachedResponse) {
-            let lastModified = new Date(cachedResponse.headers.get('last-modified'));
-            let cacheResetTime = new Date(new Date().setHours(16, 0, 0, 0));
-            let now = new Date();
+            const fetchDate = new Date(cachedResponse.headers.get('date'));
+            const now = new Date();
+            const oneHour = 3600 * 1000;
 
-            if (lastModified < cacheResetTime && now < cacheResetTime) {
+            if (now - fetchDate < oneHour) {
                 console.log('Using cached database');
                 return await cachedResponse.arrayBuffer();
             }
