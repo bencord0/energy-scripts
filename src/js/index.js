@@ -55,10 +55,11 @@ const urlParams = new URLSearchParams(window.location.search);
 
 const millisecondsPerDay = 864e5;
 let today = new Date().setHours(0, 0, 0, 0);
+let tomorrow = new Date(today + millisecondsPerDay);
 let yesterday = new Date(today - millisecondsPerDay);
 let dayBefore = new Date(yesterday - millisecondsPerDay);
-let startDate = new Date(urlParams.get('start') || dayBefore);
-let endDate = new Date(urlParams.get('end') || yesterday);
+let startDate = new Date(urlParams.get('start') || yesterday);
+let endDate = new Date(urlParams.get('end') || tomorrow);
 
 let urlDebouncer;
 function updateUrl(startStr, endStr) {
@@ -367,3 +368,103 @@ window.addEventListener('resize', () => {
         });
     }
 });
+
+// Touch handling state
+let lastTouchX = null;
+let lastTouchDist = null;
+
+const chartElement = document.getElementById('chart');
+
+chartElement.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#cost-summary')) return;
+
+    if (e.touches.length === 1) {
+        lastTouchX = e.touches[0].clientX;
+    } else if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        lastTouchX = (t1.clientX + t2.clientX) / 2;
+    }
+}, { passive: false });
+
+chartElement.addEventListener('touchmove', (e) => {
+    if (e.target.closest('#cost-summary')) return;
+    if (e.cancelable) e.preventDefault();
+
+    const rect = chartElement.getBoundingClientRect();
+    const duration = endDate.getTime() - startDate.getTime();
+
+    if (e.touches.length === 1 && lastTouchX !== null) {
+        // Pan
+        const currentX = e.touches[0].clientX;
+        const deltaX = lastTouchX - currentX; // Drag left = move forward in time (view moves right)
+
+        // Sensitivity factor could be adjusted. Currently 1 pixel = 1 pixel of time-width
+        const shift = (deltaX / rect.width) * duration;
+        startDate = new Date(startDate.getTime() + shift);
+        endDate = new Date(endDate.getTime() + shift);
+
+        lastTouchX = currentX;
+
+    } else if (e.touches.length === 2 && lastTouchDist !== null) {
+        // Pinch Zoom
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const currentCenter = (t1.clientX + t2.clientX) / 2;
+
+        // Calculate zoom factor
+        // distance increased = zoom in (show smaller time range) -> factor < 1
+        // distance decreased = zoom out (show larger time range) -> factor > 1
+        // This is opposite to scroll wheel often, let's derive it:
+        // desired new duration = old_duration * (old_dist / new_dist)
+
+        const factor = lastTouchDist / currentDist;
+
+        // Apply limits
+        const newDuration = Math.max(1000 * 60 * 30, Math.min(duration * factor, 1000 * 60 * 60 * 24 * 365));
+
+        // Calculate focus point relative to chart width
+        const mouseX = currentCenter - rect.left;
+        const mouseRatio = Math.max(0, Math.min(1, mouseX / rect.width));
+        const focusTime = startDate.getTime() + duration * mouseRatio;
+
+        startDate = new Date(focusTime - newDuration * mouseRatio);
+        endDate = new Date(focusTime + newDuration * (1 - mouseRatio));
+
+        lastTouchDist = currentDist;
+        lastTouchX = currentCenter; // Update center for potential smooth transition to pan
+    }
+
+    if (!pendingUpdate) {
+        pendingUpdate = true;
+        requestAnimationFrame(() => {
+            render();
+            pendingUpdate = false;
+        });
+    }
+}, { passive: false });
+
+chartElement.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) {
+        lastTouchDist = null;
+    }
+    if (e.touches.length === 0) {
+        lastTouchX = null;
+    } else if (e.touches.length === 1) {
+        // Reset single touch anchor effectively to avoid jumps
+        lastTouchX = e.touches[0].clientX;
+    }
+}, { passive: false });
+
+// Update every minute
+setInterval(() => {
+    if (!pendingUpdate) {
+        pendingUpdate = true;
+        requestAnimationFrame(() => {
+            render();
+            pendingUpdate = false;
+        });
+    }
+}, 60 * 1000);
