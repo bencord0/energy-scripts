@@ -1,25 +1,33 @@
-.mode json
 -- Find the next cheapest time slots between the agile peak periods
 -- order by value, and select the cheapest of the day.
+
+-- Parameters
+
+-- Granularity is one of the few tunables we have
+-- 1.0 does not remove any slots, so don't go below that.
+-- 1.5 gives us longer candidates
+-- 2.0 to 4.0 gives us cheaper candidates, but smaller time windows
+.param set $GRANULARITY 1.8
+
+-- Only inspect future time slots
+.param set $FROM_DATE strftime('%Y-%m-%dT%H:%M')
+
+CREATE TEMPORARY TABLE import_slots AS
 WITH raw_slots AS (
     SELECT valid_from, valid_to, value
     FROM tariff_rates
     WHERE
-        valid_from > DATE()
-),
-cheap_slots AS (
-    SELECT * FROM raw_slots
+        valid_from > $FROM_DATE
+)
+SELECT * FROM raw_slots
     ORDER BY value ASC
-    -- This is one of the few tunables we have
-    -- 1.0 does not remove any slots, so don't go below that.
-    -- 1.5 gives us longer candidates
-    -- 2.0 to 4.0 gives us cheaper candidates, but smaller time windows
-    LIMIT (SELECT FLOOR(COUNT(*) / 1.8) FROM raw_slots)
-),
+    LIMIT (SELECT FLOOR(COUNT(*) / $GRANULARITY) FROM raw_slots);
+
 -- Re-order back in chronological order
-ordered_slots AS (
+CREATE TEMPORARY TABLE charging_slots AS
+WITH ordered_slots AS (
     SELECT valid_from, valid_to, value
-    FROM cheap_slots
+    FROM import_slots
     ORDER BY valid_from
 ),
 -- Find gaps between the slots, and mark the discontinuities
@@ -75,3 +83,10 @@ FROM candidate_slots
 -- +2 / (100 + 1) = 0.0198
 -- +1 / (100 + 2) = 0.0098
 ORDER BY (duration_hours / (100 + value)) DESC;
+
+.mode ascii
+SELECT 'Charging slots
+';
+
+.mode table
+SELECT * from charging_slots;
