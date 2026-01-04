@@ -94,7 +94,7 @@ FROM candidate_slots
 ORDER BY (duration_hours / (100 + value)) DESC;
 
 .mode ascii
-SELECT 'Charging slots
+SELECT 'Agile Octopus Charging Slots
 ';
 
 .mode table
