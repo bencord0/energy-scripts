@@ -35,6 +35,13 @@ def main():
     connection = connect_db(args.db)
     migrate_db(connection)
 
+    # Insert/update the product mapping
+    with connection:
+        connection.execute(
+            '''INSERT OR REPLACE INTO products(product_code, tariff_code, type)
+               VALUES(?, ?, ?)''',
+            (product_code, tariff_code, tariff_type))
+
     interval = last_interval(product_code, tariff_code, connection)
 
     new_data = False
@@ -55,12 +62,11 @@ def main():
                         tariff_rates(
                             product_code,
                             tariff_code,
-                            type,
                             valid_from,
                             valid_to,
                             value)
-                        VALUES(?, ?, ?, ?, ?, ?, ?)''',
-                    (product_code, tariff_code, tariff_type, valid_from, valid_to, value))
+                        VALUES(?, ?, ?, ?, ?)''',
+                    (product_code, tariff_code, valid_from, valid_to, value))
                 print('OK')
             except sqlite3.IntegrityError as ie:
                 print('IntegrityError')
@@ -77,13 +83,18 @@ def migrate_db(connection):
     with connection:
         connection.executescript('''
             BEGIN;
+            CREATE TABLE IF NOT EXISTS products (
+                product_code TEXT NOT NULL,
+                tariff_code  TEXT NOT NULL,
+                type         TEXT NOT NULL, -- IMPORT or EXPORT
+                PRIMARY KEY (product_code, tariff_code)
+            );
             CREATE TABLE IF NOT EXISTS tariff_rates (
-                product_code   TEXT, -- product code
-                tariff_code    TEXT, -- per-region tariff code
-                type           TEXT, -- IMPORT or EXPORT
-                valid_from     TEXT, -- timestamp, use UTC date arithmetic
-                valid_to       TEXT, -- timestamp, use UTC date arithmetic
-                value          REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
+                product_code TEXT NOT NULL, -- product code
+                tariff_code  TEXT NOT NULL, -- per-region tariff code
+                valid_from   TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+                valid_to     TEXT,          -- timestamp, use UTC date arithmetic
+                value        REAL,          -- If precision is needed, use a TEXT field and integer aritmetic.
                 PRIMARY KEY (product_code, tariff_code, valid_from)
             );
             COMMIT;

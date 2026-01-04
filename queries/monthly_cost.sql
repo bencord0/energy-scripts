@@ -14,7 +14,11 @@ WITH costs AS (
     LEFT JOIN tariff_rates AS r
     ON
         c.interval_start = r.valid_from
-    WHERE r.type = 'IMPORT'
+    JOIN products AS p
+    ON
+        r.product_code = p.product_code
+        AND r.tariff_code = p.tariff_code
+    WHERE p.type = 'IMPORT'
     GROUP BY month
 )
 

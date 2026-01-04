@@ -1,3 +1,7 @@
+import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
+
+const DB_VERSION = '2026-01-04T22:19:31Z';
+
 export async function getDataBuffer() {
     const cacheName = 'octopus-data-v1';
     const url = '/data/power.sqlite3';
@@ -8,15 +12,46 @@ export async function getDataBuffer() {
         const cachedResponse = await cache.match(url);
 
         if (cachedResponse) {
-            const fetchDate = new Date(cachedResponse.headers.get('date'));
-            const now = new Date();
-            const oneHour = 3600 * 1000;
+            const buffer = await cachedResponse.arrayBuffer();
 
-            if (now - fetchDate < oneHour) {
-                console.log('Using cached database');
-                return await cachedResponse.arrayBuffer();
+            // Check version
+            try {
+                const sqlite3 = await sqlite3WasmInit();
+                const db = new sqlite3.oo1.DB();
+                const rc = sqlite3.capi.sqlite3_deserialize(
+                    db.pointer,
+                    'main',
+                    sqlite3.wasm.allocFromTypedArray(buffer),
+                    buffer.byteLength,
+                    buffer.byteLength,
+                    sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
+                );
+                db.checkRc(rc);
+
+                let dbVersion = null;
+                db.exec({
+                    sql: "SELECT value FROM versioning WHERE key = 'version'",
+                    callback: (row) => { dbVersion = row[0]; }
+                });
+                db.close();
+
+                if (dbVersion === DB_VERSION) {
+                    const fetchDate = new Date(cachedResponse.headers.get('date'));
+                    const now = new Date();
+                    const oneHour = 3600 * 1000;
+
+                    if (now - fetchDate < oneHour) {
+                        console.log('Using cached database (version ' + dbVersion + ')');
+                        return buffer;
+                    }
+                } else {
+                    console.warn('Database version mismatch. Expected: ' + DB_VERSION + ', Found: ' + dbVersion);
+                }
+            } catch (e) {
+                console.warn('Could not check database version (might be old schema):', e);
             }
         }
+
         console.log('Fetching database and caching...');
         const response = await fetch(url);
         await cache.put(url, response.clone());
@@ -25,8 +60,6 @@ export async function getDataBuffer() {
 
     return await fetch(url).then(res => res.arrayBuffer());
 }
-
-import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
 export async function initDatabase() {
     const [sqlite3, dataBuffer] = await Promise.all([
@@ -66,9 +99,10 @@ export function getConsumptionTimeSeries(db, startStr, endStr, type = 'IMPORT') 
                 avg(r.value),
                 sum(c.consumption * r.value) as cost
             FROM tariff_rates as r
+            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
             LEFT JOIN consumption as c ON r.valid_from = c.interval_start
             WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND r.type = $type
+              AND p.type = $type
             GROUP BY date(r.valid_from)
             ORDER BY r.valid_from ASC
         `;
@@ -82,9 +116,10 @@ export function getConsumptionTimeSeries(db, startStr, endStr, type = 'IMPORT') 
                 avg(r.value),
                 sum(c.consumption * r.value) as cost
             FROM tariff_rates as r
+            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
             LEFT JOIN consumption as c ON r.valid_from = c.interval_start
             WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND r.type = $type
+              AND p.type = $type
             GROUP BY strftime('%Y-%m-%dT%H', r.valid_from)
             ORDER BY r.valid_from ASC
         `;
@@ -98,9 +133,10 @@ export function getConsumptionTimeSeries(db, startStr, endStr, type = 'IMPORT') 
                 r.value,
                 (c.consumption * r.value) as cost
             FROM tariff_rates as r
+            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
             LEFT JOIN consumption as c ON r.valid_from = c.interval_start
             WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND r.type = $type
+              AND p.type = $type
             ORDER BY r.valid_from ASC
         `;
         grouping = '30m';
@@ -136,8 +172,9 @@ export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
         FROM consumption as c
         LEFT JOIN tariff_rates as r
         ON c.interval_start = r.valid_from
+        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
         WHERE c.interval_start >= $start AND c.interval_start < $end
-          AND r.type = $type
+          AND p.type = $type
         GROUP BY r.value
         ORDER BY r.value ASC
     `;
