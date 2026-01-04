@@ -20,12 +20,19 @@ def main():
     connection = connect_db(args.db)
     migrate_db(connection)
 
+    interval = last_interval(connection)
+
+    new_data = False
     with connection:
         for data in results:
             account = args.account_id
             interval_start = data['interval_start']
             interval_end = data['interval_end']
             consumption = data['consumption']
+
+            if interval and interval_start <= interval:
+                continue
+            new_data = True
 
             print(f'INSERT consumption for {account} at {interval_start}...', end='')
             try:
@@ -43,6 +50,9 @@ def main():
                 print('Integrity Error')
                 continue
 
+    if not new_data:
+        print('No new data')
+
 
 def connect_db(uri):
     return sqlite3.connect(uri)
@@ -57,11 +67,24 @@ def migrate_db(connection):
                 interval_start TEXT, -- timestamp, use UTC date arithmetic
                 interval_end   TEXT, -- timestamp, use UTC date arithmetic
                 consumption    REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
+                generation     REAL,
                 PRIMARY KEY (account, interval_start)
             );
             CREATE INDEX IF NOT EXISTS idx_consumption_start ON consumption(interval_start);
             COMMIT;
         ''')
+
+
+def last_interval(connection):
+    with connection:
+        result = connection.execute('''
+            SELECT interval_start
+            FROM consumption
+            ORDER BY interval_start DESC
+            LIMIT 1;
+        ''')
+        last_interval = result.fetchone()[0]
+        return last_interval
 
 
 if __name__ == '__main__':

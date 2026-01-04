@@ -35,11 +35,18 @@ def main():
     connection = connect_db(args.db)
     migrate_db(connection)
 
+    interval = last_interval(product_code, tariff_code, connection)
+
+    new_data = False
     with connection:
         for rate in rates:
             valid_from = rate['valid_from']
             valid_to = rate['valid_to']
             value = rate['value_inc_vat']
+
+            if interval and valid_from <= interval:
+                continue
+            new_data = True
 
             print(f'INSERT tariff_rate for {product_code} at {valid_from}...', end='')
             try:
@@ -58,6 +65,8 @@ def main():
             except sqlite3.IntegrityError as ie:
                 print('IntegrityError')
                 continue
+    if not new_data:
+        print('No new data')
 
 
 def connect_db(uri):
@@ -81,6 +90,22 @@ def migrate_db(connection):
         ''')
 
 
+def last_interval(product_code, tariff_code, connection):
+    with connection:
+        result = connection.execute('''
+            SELECT valid_from
+            FROM tariff_rates
+            WHERE product_code = :product_code
+                AND tariff_code = :tariff_code
+            ORDER BY valid_from DESC
+            LIMIT 1;
+        ''', {
+            'product_code': product_code,
+            'tariff_code': tariff_code,
+        })
+        last_interval = result.fetchone()
+        if last_interval:
+            return last_interval[0]
 
 if __name__ == '__main__':
     main()

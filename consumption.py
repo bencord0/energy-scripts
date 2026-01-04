@@ -37,7 +37,7 @@ def main():
         period_to = datetime.fromisoformat(args.to).replace(
             hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
     else:
-        period_to = today
+        period_to = tomorrow
 
     assert period_from < period_to, 'periods mixed up'
 
