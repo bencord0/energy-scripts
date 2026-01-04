@@ -8,4 +8,5 @@ SELECT
 FROM consumption as c
 LEFT JOIN tariff_rates as r
 ON c.interval_start = r.valid_from
+WHERE r.type = 'IMPORT'
 GROUP BY price;

@@ -1,6 +1,6 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase } from '/js/db.js';
+import { initDatabase, getPriceDistribution } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
 
 const { sqlite3, db } = await initDatabase();
@@ -31,37 +31,10 @@ function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
-    const data = [];
-
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    let sql = `
-    SELECT
-        r.value,
-        SUM(c.consumption),
-        (r.value * SUM(consumption)) as cost
-    FROM consumption as c
-    LEFT JOIN tariff_rates as r
-    ON c.interval_start = r.valid_from
-    WHERE c.interval_start > $start AND c.interval_end < $end
-    GROUP BY r.value
-    ORDER BY r.value ASC`;
-
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-        },
-        callback: (row) => {
-            data.push({
-                rate: row[0],
-                consumption: row[1],
-                cost: row[2],
-            });
-        },
-    });
+    const data = getPriceDistribution(db, startStr, endStr, 'IMPORT');
 
     function formatCost(cost) {
         if (cost > 100) {

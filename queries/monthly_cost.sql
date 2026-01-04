@@ -14,6 +14,7 @@ WITH costs AS (
     LEFT JOIN tariff_rates AS r
     ON
         c.interval_start = r.valid_from
+    WHERE r.type = 'IMPORT'
     GROUP BY month
 )
 

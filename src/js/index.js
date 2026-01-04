@@ -1,6 +1,6 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase } from '/js/db.js';
+import { initDatabase, getConsumptionTimeSeries } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
 
 const { sqlite3, db } = await initDatabase();
@@ -34,76 +34,21 @@ function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
-    const data = [];
-
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    let sql = '';
-    let interval = d3.timeMinute.every(30);
+    const { data, grouping } = getConsumptionTimeSeries(db, startStr, endStr, 'IMPORT');
 
-    if (durationHours > 24 * 30) {
-        // More than a month: Group by Day
-        sql = `
-            SELECT
-                date(r.valid_from) || 'T00:00:00Z',
-                sum(c.consumption),
-                avg(r.value),
-                sum(c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-            GROUP BY date(r.valid_from)
-            ORDER BY r.valid_from ASC
-        `;
+    let interval;
+    if (grouping === '1d') {
         interval = d3.timeDay;
-    } else if (durationHours > 24 * 7) {
-        // More than a week: Group by Hour
-        sql = `
-            SELECT
-                strftime('%Y-%m-%dT%H:00:00Z', r.valid_from),
-                sum(c.consumption),
-                avg(r.value),
-                sum(c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-            GROUP BY strftime('%Y-%m-%dT%H', r.valid_from)
-            ORDER BY r.valid_from ASC
-        `;
+    } else if (grouping === '1h') {
         interval = d3.timeHour;
     } else {
-        // Default: 30 minute intervals
-        sql = `
-            SELECT
-                r.valid_from,
-                c.consumption,
-                r.value,
-                (c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-            ORDER BY r.valid_from ASC
-        `;
+        interval = d3.timeMinute.every(30);
     }
-
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-        },
-        callback: (row) => {
-            data.push({
-                timestamp: new Date(row[0]),
-                consumption: row[1],
-                rate: row[2],
-                cost: row[3],
-            });
-        },
-    });
 
     const maxKWh = d3.max(data, d => d.consumption) || 1;
     const maxP = d3.max(data, d => Math.max(d.rate, d.cost)) || 40;

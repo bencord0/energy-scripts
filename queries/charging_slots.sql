@@ -18,6 +18,7 @@ WITH raw_slots AS (
     FROM tariff_rates
     WHERE
         valid_from > $FROM_DATE
+        AND type = 'IMPORT'
 )
 SELECT * FROM raw_slots
     ORDER BY value ASC
