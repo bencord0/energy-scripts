@@ -2,6 +2,14 @@ import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlit
 
 const DB_VERSION = '2026-01-04T22:19:31Z';
 
+let sqlite3Promise = null;
+async function getSqlite3() {
+    if (!sqlite3Promise) {
+        sqlite3Promise = sqlite3WasmInit();
+    }
+    return sqlite3Promise;
+}
+
 export async function getDataBuffer() {
     const cacheName = 'octopus-data-v1';
     const url = '/data/power.sqlite3';
@@ -16,7 +24,7 @@ export async function getDataBuffer() {
 
             // Check version
             try {
-                const sqlite3 = await sqlite3WasmInit();
+                const sqlite3 = await getSqlite3();
                 const db = new sqlite3.oo1.DB();
                 const rc = sqlite3.capi.sqlite3_deserialize(
                     db.pointer,
@@ -62,10 +70,8 @@ export async function getDataBuffer() {
 }
 
 export async function initDatabase() {
-    const [sqlite3, dataBuffer] = await Promise.all([
-        sqlite3WasmInit(),
-        getDataBuffer()
-    ]);
+    const sqlite3 = await getSqlite3();
+    const dataBuffer = await getDataBuffer();
 
     const db = new sqlite3.oo1.DB();
 
