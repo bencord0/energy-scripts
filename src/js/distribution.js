@@ -1,6 +1,7 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { initDatabase } from '/js/db.js';
+import { priceColors } from '/js/colors.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
@@ -13,7 +14,7 @@ let today = new Date().setHours(0, 0, 0, 0);
 let yesterday = new Date(today - millisecondsPerDay);
 let dayBefore = new Date(yesterday - millisecondsPerDay);
 let startDate = new Date(urlParams.get('start') || dayBefore);
-let endDate = new Date(urlParams.get('end') || yesterday);
+let endDate = new Date(urlParams.get('end') || today);
 
 let urlDebouncer;
 function updateUrl(startStr, endStr) {
@@ -138,6 +139,7 @@ function render() {
             grid: true,
             domain: [0, maxY * 1.1], // give some headroom
         },
+        color: priceColors,
         marks: [
             // Iso-Usage Lines (Radiating lines)
             isoUsage.map(curve => Plot.line(curve, {
@@ -165,7 +167,7 @@ function render() {
                 x1: "rate_start",
                 x2: "rate_end",
                 y: "cost",
-                fill: "steelblue",
+                fill: "rate_end",
                 tip: true,
                 title: d => `Rate: ${d.rate_start} - ${d.rate_end} p/kWh\nUsage: ${d.consumption.toFixed(3)} kWh\nCost: ${formatCost(d.cost)}`
             }),

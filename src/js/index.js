@@ -1,6 +1,7 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { initDatabase } from '/js/db.js';
+import { priceColors } from '/js/colors.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
@@ -129,17 +130,7 @@ function render() {
             domain: [startDate, endDate],
         },
         y: { grid: true },
-        color: {
-            type: "threshold",
-            domain: [7, 14, 27, 31],
-            range: [
-                "#0077be", // < 7: Less than Intelligent Octopus Off-Peak
-                "#52be80", // 7-14: Less than Economy 7 Night Rate
-                "#f1c40f", // 14-27: Less than the Flexible Rate (equivalent to the Ofgem Price Cap)
-                "#e67e22", // 27-31: Less than the IOG Day Rate
-                "#e74c3c"  // > 31: More than the Cosy Peak Rate
-            ]
-        },
+        color: priceColors,
         marks: [
             // Cost
             Plot.rectY(data, {
@@ -148,7 +139,7 @@ function render() {
                 interval: interval,
                 fill: 'rate',
             }),
-            // Rate
+            // Price
             Plot.rectY(data, {
                 x: 'timestamp',
                 y: d => d.rate / scaleFactor,
@@ -167,7 +158,7 @@ function render() {
             Plot.axisY({ anchor: "left", label: "Used Energy (kWh)" }),
             Plot.axisY({
                 anchor: "right",
-                label: "rate (p/kWh), cost (p)",
+                label: "price (p/kWh), cost (p)",
                 tickFormat: y => (y * scaleFactor).toFixed(0),
             }),
             // Current Time Marker
@@ -182,7 +173,7 @@ function render() {
                 title: d => [
                     `Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.timestamp)}`,
                     `Usage: ${(d.consumption || 0).toFixed(3)} kWh`,
-                    `Rate: ${(d.rate || 0).toFixed(2)} p/kWh`,
+                    `Agile Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
                     `Cost: ${(d.cost || 0).toFixed(2)} p`
                 ].join("\n")
             })),
@@ -206,17 +197,17 @@ function render() {
     const totalCost = data.reduce((sum, d) => sum + (d.cost || 0), 0);
 
     // Calculate hours covered (based on actual data points)
-    const hoursFromData = data.length > 0
-        ? (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60)
+    const period = data.length > 0
+        ? 0.5 + (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60)
         : 0;
 
     // Calculate average hourly cost
-    const avgHourlyCost = hoursFromData > 0 ? totalCost / hoursFromData : 0;
+    const avgHourlyCost = period > 0 ? totalCost / period : 0;
 
-    // Calculate average rate (independent of consumption)
+    // Calculate average price (independent of consumption)
     // This will vary depending on the time-of-use tariff, e.g. Octopus Agile.
     // For Fixed and Flexible tariffs, this is (mostly) constant.
-    const avgRate = data.length > 0
+    const avgPrice = data.length > 0
         ? data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length
         : 0;
 
@@ -252,7 +243,7 @@ function render() {
 
     // Update Cost Summary Values in DOM
     const periodElem = document.getElementById('val-period');
-    if (periodElem) periodElem.textContent = hoursFromData.toFixed(1);
+    if (periodElem) periodElem.textContent = period.toFixed(1);
 
     const powerTotalElem = document.getElementById('val-power-total');
     if (powerTotalElem) powerTotalElem.textContent = totalConsumption.toFixed(2);
@@ -270,8 +261,8 @@ function render() {
     const costHourlyElem = document.getElementById('val-cost-hourly');
     if (costHourlyElem) costHourlyElem.innerHTML = formatCost(avgHourlyCost);
 
-    const costRateElem = document.getElementById('val-cost-rate');
-    if (costRateElem) costRateElem.textContent = avgRate.toFixed(2);
+    const costPriceElem = document.getElementById('val-cost-price');
+    if (costPriceElem) costPriceElem.textContent = avgPrice.toFixed(2);
 
     // Update URL without refreshing (Debounced)
     updateUrl(startStr, endStr);
