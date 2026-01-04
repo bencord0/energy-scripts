@@ -2,10 +2,13 @@
 set -e -o pipefail
 
 PRODUCT_CODE="VAR-22-11-01"
-TARIFF_ID="E-1R-VAR-22-11-01-A"
-python ./tariff_rates.py --code "${PRODUCT_CODE}" --tariff "${TARIFF_ID}" \
-    > data/flexible_tariff_A.json
+TARIFF_CODE="E-1R-VAR-22-11-01-A"
+python ./tariff_rates.py \
+    --product-code "${PRODUCT_CODE}" \
+    --tariff-code "${TARIFF_CODE}" \
+    > "data/tariff_${TARIFF_CODE}.json"
 
 python ./save_tariff_data.py \
-    --code "${PRODUCT_CODE}" --tariff "${TARIFF_ID}" \
-    data/flexible_tariff_A.json data/power.sqlite3
+    --product-code "${PRODUCT_CODE}" \
+    --tariff-code "${TARIFF_CODE}" \
+    "data/tariff_${TARIFF_CODE}.json" data/power.sqlite3

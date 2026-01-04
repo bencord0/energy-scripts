@@ -6,14 +6,16 @@ import sys
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
-parser.add_argument('--code', required=True)
-parser.add_argument('--tariff', required=True)
+parser.add_argument('--product-code', required=True)
+parser.add_argument('--tariff-code', required=True)
 parser.add_argument('--page', type=int)
 
 
 def main():
     args = parser.parse_args()
-    url = f'https://api.octopus.energy/v1/products/{args.code}/electricity-tariffs/{args.tariff}/standard-unit-rates/'
+    product_code = args.product_code
+    tariff_code = args.tariff_code
+    url = f'https://api.octopus.energy/v1/products/{product_code}/electricity-tariffs/{tariff_code}/standard-unit-rates/'
 
     kwargs = {}
     if page := args.page:
@@ -21,7 +23,11 @@ def main():
 
     # This is a public API
     response = requests.get(url, **kwargs)
-    data = response.json()
+    try:
+        data = response.json()
+    except Exception as e:
+        print(e)
+        breakpoint()
     print(json.dumps(data, indent=2))
 
 
