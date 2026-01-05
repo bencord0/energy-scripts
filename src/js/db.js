@@ -203,3 +203,55 @@ export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
     });
     return data;
 }
+
+export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
+    // Query all consumption data within the window
+    // Group by time of day (30-minute slots) AND rate
+    const sql = `
+        SELECT
+            strftime('%H:%M', c.interval_start) as time_of_day,
+            r.value as rate,
+            SUM(c.consumption) as consumption
+        FROM consumption as c
+        LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
+        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        WHERE c.interval_start >= $start AND c.interval_start < $end
+          AND p.type = $type
+        GROUP BY time_of_day, r.value
+        ORDER BY time_of_day ASC, r.value DESC
+    `;
+
+    const data = [];
+    db.exec({
+        sql: sql,
+        bind: {
+            $start: startStr,
+            $end: endStr,
+            $type: type
+        },
+        callback: (row) => {
+            const timeStr = row[0];
+            const rate = row[1];
+            const consumption = row[2];
+            const [hours, minutes] = timeStr.split(':').map(Number);
+
+            // Create a date object for today with the time of day
+            const timestamp = new Date();
+            timestamp.setHours(hours, minutes, 0, 0);
+
+            // Create end timestamp (30 minutes later)
+            const timestampEnd = new Date(timestamp);
+            timestampEnd.setMinutes(timestampEnd.getMinutes() + 30);
+
+            data.push({
+                time_of_day: timeStr,
+                timestamp: timestamp,
+                timestampEnd: timestampEnd,
+                rate: rate,
+                consumption: consumption,
+            });
+        },
+    });
+
+    return data;
+}
