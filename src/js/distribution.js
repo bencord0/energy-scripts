@@ -184,8 +184,8 @@ window.addEventListener('wheel', (e) => {
             startDate.setTime(dayBefore.getTime());
         }
 
-        // limit of our data
-        let earliestDay = new Date("2025-12-01");
+        // Limit of our data
+        const earliestDay = new Date("2025-12-01");
         if (startDate < earliestDay) {
             startDate.setTime(earliestDay.getTime());
         }

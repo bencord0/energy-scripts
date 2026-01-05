@@ -10,10 +10,10 @@ window.db = db; // for debugging
 const urlParams = new URLSearchParams(window.location.search);
 
 const millisecondsPerDay = 864e5;
-let today = new Date().setHours(0, 0, 0, 0);
-let tomorrow = new Date(today + millisecondsPerDay);
-let yesterday = new Date(today - millisecondsPerDay);
-let dayBefore = new Date(yesterday - millisecondsPerDay);
+const today = new Date().setHours(0, 0, 0, 0);
+const tomorrow = new Date(today + millisecondsPerDay);
+const yesterday = new Date(today - millisecondsPerDay);
+const dayBefore = new Date(yesterday - millisecondsPerDay);
 let startDate = new Date(urlParams.get('start') || yesterday);
 let endDate = new Date(urlParams.get('end') || tomorrow);
 
