@@ -44,7 +44,7 @@ candidate_slots AS (
     SELECT
         MIN(valid_from) as valid_from,
         MAX(valid_to) as valid_to,
-        (strftime('%s', MAX(valid_to)) - strftime('%s', MIN(valid_from))) / 3600.0 as duration,
+        (strftime('%s', MAX(valid_to)) - strftime('%s', MIN(valid_from))) / 3600.0 as duration_hours,
         AVG(value) as value
     FROM grouped_slots
     GROUP BY group_id
@@ -52,7 +52,7 @@ candidate_slots AS (
 SELECT
     valid_from,
     valid_to,
-    duration,
+    duration_hours,
     value,
     value - (SELECT MAX(value) FROM charging_slots) as profit
 FROM candidate_slots
