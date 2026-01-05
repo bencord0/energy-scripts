@@ -19,3 +19,5 @@ function save_agile_tariff_rates() {
 
 save_agile_tariff_rates AGILE-24-10-01          E-1R-AGILE-24-10-01-A
 save_agile_tariff_rates AGILE-OUTGOING-19-05-13 E-1R-AGILE-OUTGOING-19-05-13-A
+
+./scripts/version_db.sh

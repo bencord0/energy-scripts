@@ -11,3 +11,5 @@ python ./consumption.py --mpan "${MPAN}" --serial "${SERIAL}" \
     > "data/consumption-${MPAN}-${SERIAL}.json"
 
 python ./save_consumption_data.py --account-id "${ACCOUNT_ID}" "data/consumption-${MPAN}-${SERIAL}.json" data/power.sqlite3
+
+./scripts/version_db.sh
