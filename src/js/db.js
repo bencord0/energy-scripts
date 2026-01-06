@@ -1,6 +1,6 @@
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-const DB_VERSION = '2026-01-06T16:00:26Z';
+const DB_VERSION = '2026-01-06T19:45:15Z';
 
 let sqlite3Promise = null;
 async function getSqlite3() {
@@ -88,92 +88,76 @@ export async function initDatabase() {
     return { sqlite3, db };
 }
 
-export function getConsumptionTimeSeries(db, startStr, endStr, type = 'IMPORT') {
+export function getTimeWindow(startStr, endStr) {
     const startDate = new Date(startStr);
     const endDate = new Date(endStr);
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    let sql = '';
-    let grouping = '30m';
-
     if (durationHours > 24 * 30) {
-        // More than a month: Group by Day
-        sql = `
-            SELECT
-                date(r.valid_from) || 'T00:00:00Z',
-                sum(c.consumption),
-                avg(r.value),
-                sum(c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND p.type = $type
-            GROUP BY date(r.valid_from)
-            ORDER BY r.valid_from ASC
-        `;
-        grouping = '1d';
+        return '1d';
     } else if (durationHours > 24 * 7) {
-        // More than a week: Group by Hour
-        sql = `
-            SELECT
-                strftime('%Y-%m-%dT%H:00:00Z', r.valid_from),
-                sum(c.consumption),
-                avg(r.value),
-                sum(c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND p.type = $type
-            GROUP BY strftime('%Y-%m-%dT%H', r.valid_from)
-            ORDER BY r.valid_from ASC
-        `;
-        grouping = '1h';
+        return '1h';
     } else {
-        // Default: 30 minute intervals
-        sql = `
-            SELECT
-                r.valid_from,
-                c.consumption,
-                r.value,
-                (c.consumption * r.value) as cost
-            FROM tariff_rates as r
-            JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-            LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-            WHERE r.valid_from >= $start AND r.valid_from < $end
-              AND p.type = $type
-            ORDER BY r.valid_from ASC
-        `;
-        grouping = '30m';
+        return '30m';
     }
+}
+
+export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
+    const timeWindow = getTimeWindow(startStr, endStr);
+    const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
+
+    const sql = `
+        SELECT
+            date(r.valid_from) || 'T00:00:00Z',
+            strftime('%Y-%m-%dT%H:00:00Z', r.valid_from),
+            r.valid_from,
+            SUM(c.consumption),
+            AVG(r.value),
+            SUM(c.consumption * r.value)
+        FROM tariff_rates as r
+        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        LEFT JOIN consumption as c ON r.valid_from = c.interval_start
+        WHERE r.valid_from >= $start AND r.valid_from < $end
+          AND p.type = $type
+        GROUP BY
+          CASE $window
+            WHEN '1d' THEN date(r.valid_from)
+            WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', r.valid_from)
+            ELSE r.valid_from
+          END
+        ORDER BY r.valid_from ASC
+    `;
 
     const data = [];
+
     db.exec({
         sql: sql,
         bind: {
             $start: startStr,
             $end: endStr,
-            $type: type
+            $type: type,
+            $window: timeWindow
         },
         callback: (row) => {
             data.push({
-                timestamp: new Date(row[0]),
-                consumption: row[1],
-                rate: row[2],
-                cost: row[3],
+                timestamp: new Date(row[timeColIdx]),
+                consumption: row[3],
+                rate: row[4],
+                cost: row[5],
             });
         },
     });
 
-    return { data, grouping };
+    return { data, timeWindow };
 }
 
 export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
+    const timeWindow = getTimeWindow(startStr, endStr);
     const sql = `
         SELECT
             r.value,
             SUM(c.consumption),
+            COUNT(c.interval_start) as slots,
             (r.value * SUM(c.consumption)) as cost
         FROM consumption as c
         LEFT JOIN tariff_rates as r
@@ -197,19 +181,31 @@ export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
             data.push({
                 rate: row[0],
                 consumption: row[1],
-                cost: row[2],
+                slots: row[2],
+                cost: row[3],
             });
         },
     });
-    return data;
+    return { data, timeWindow };
 }
 
 export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
+    const timeWindow = getTimeWindow(startStr, endStr);
+
+    const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
+    const intervalMinutes = {
+        "1d": 1440,
+        "1h": 60,
+        "30m": 30,
+    }[timeWindow];
+
     // Query all consumption data within the window
-    // Group by time of day (30-minute slots) AND rate
+    // Calculate variants for different time windows in a single expression
     const sql = `
         SELECT
-            strftime('%H:%M', c.interval_start) as time_of_day,
+            '00:00' as t_1d,
+            strftime('%H:00', c.interval_start) as t_1h,
+            strftime('%H:%M', c.interval_start) as t_30m,
             r.value as rate,
             SUM(c.consumption) as consumption
         FROM consumption as c
@@ -217,8 +213,8 @@ export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
         JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
         WHERE c.interval_start >= $start AND c.interval_start < $end
           AND p.type = $type
-        GROUP BY time_of_day, r.value
-        ORDER BY time_of_day ASC, r.value DESC
+        GROUP BY t_30m, rate
+        ORDER BY t_30m ASC, rate DESC
     `;
 
     const data = [];
@@ -230,18 +226,18 @@ export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
             $type: type
         },
         callback: (row) => {
-            const timeStr = row[0];
-            const rate = row[1];
-            const consumption = row[2];
+            const timeStr = row[timeColIdx];
+            const rate = row[3];
+            const consumption = row[4];
             const [hours, minutes] = timeStr.split(':').map(Number);
 
             // Create a date object for today with the time of day
             const timestamp = new Date();
             timestamp.setHours(hours, minutes, 0, 0);
 
-            // Create end timestamp (30 minutes later)
+            // Create end timestamp
             const timestampEnd = new Date(timestamp);
-            timestampEnd.setMinutes(timestampEnd.getMinutes() + 30);
+            timestampEnd.setMinutes(timestampEnd.getMinutes() + intervalMinutes);
 
             data.push({
                 time_of_day: timeStr,
@@ -253,5 +249,63 @@ export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
         },
     });
 
-    return data;
+    return { data, timeWindow };
+}
+
+export function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
+    /**
+     * Returns a map of date key (YYYY-MM-DD) to standing charge in pence.
+     * Queries tariff_rates table for standing charges active during the period.
+     */
+    const sql = `
+        SELECT
+            date(r.valid_from) as day,
+            AVG(r.daily_standing_charge)
+        FROM tariff_rates as r
+        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        WHERE r.valid_from >= $start AND r.valid_from < $end
+          AND p.type = $type
+        GROUP BY day
+    `;
+
+    const dateMap = new Map();
+    db.exec({
+        sql: sql,
+        bind: {
+            $start: startStr,
+            $end: endStr,
+            $type: type
+        },
+        callback: (row) => {
+            dateMap.set(row[0], row[1]);
+        },
+    });
+
+    return dateMap;
+}
+
+export function getSlotCountsByDay(db, startStr, endStr, type = 'IMPORT') {
+    const sql = `
+        SELECT
+            date(c.interval_start) as day,
+            COUNT(*) as slots
+        FROM consumption as c
+        LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
+        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        WHERE c.interval_start >= $start AND c.interval_start < $end
+          AND p.type = $type
+        GROUP BY date(c.interval_start)
+        ORDER BY day ASC
+    `;
+
+    const map = new Map();
+    db.exec({
+        sql: sql,
+        bind: { $start: startStr, $end: endStr, $type: type },
+        callback: (row) => {
+            map.set(row[0], row[1]);
+        }
+    });
+
+    return map;
 }

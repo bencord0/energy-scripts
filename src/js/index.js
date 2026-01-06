@@ -1,7 +1,8 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getConsumptionTimeSeries } from '/js/db.js';
-import { priceColors } from '/js/colors.js';
+import { initDatabase, getConsumption, getStandingCharge } from '/js/db.js';
+import { priceColors, addStripes } from '/js/colors.js';
+import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
@@ -39,29 +40,69 @@ function render() {
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    const { data, grouping } = getConsumptionTimeSeries(db, startStr, endStr, 'IMPORT');
+    const { data, timeWindow } = getConsumption(db, startStr, endStr, 'IMPORT');
+    const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
 
-    let interval;
-    if (grouping === '1d') {
-        interval = d3.timeDay;
-    } else if (grouping === '1h') {
-        interval = d3.timeHour;
-    } else {
-        interval = d3.timeMinute.every(30);
+    const { slotsPerDay, intervalHours } = getTimeWindowInfo(timeWindow);
+    const interval = {
+        "1d": d3.timeDay,
+        "1h": d3.timeHour,
+        "30m": d3.timeMinute.every(30),
+    }[timeWindow];
+
+    function dayKeyUTC(date) {
+        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    }
+
+    function standingChargeForDate(date) {
+        const key = dayKeyUTC(date);
+        return standingChargeMap.get(key) || 0;
     }
 
     const maxKWh = d3.max(data, d => d.consumption) || 1;
-    const maxP = d3.max(data, d => Math.max(d.rate, d.cost)) || 40;
+
+    // Compute maxP considering standing charge
+    const maxP = d3.max(data, d => {
+        const standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
+        return Math.max(d.rate || 0, (d.cost || 0) + standingChargeFraction);
+    }) || 40;
     const scaleFactor = maxP / maxKWh;
+
+    // Precompute standing charge and usage stacked above the standing charge bar
+    // Only include rows for slots where we have consumption data
+    const slotsWithConsumption = data.filter(d => d.consumption !== null && d.consumption !== undefined);
+
+    const standingChargeRows = slotsWithConsumption.map(d => {
+        const standingChargePence = standingChargeForDate(d.timestamp) / slotsPerDay;
+        return {
+            timestamp: d.timestamp,
+            rate: d.rate,
+            y2: (standingChargePence) / scaleFactor,
+            hasUsage: (d.consumption || 0) > 0,
+        };
+    });
+
+    const usageRows = slotsWithConsumption.map(d => {
+        const standingChargePence = standingChargeForDate(d.timestamp) / slotsPerDay;
+        const standingChargeScaled = standingChargePence / scaleFactor;
+        const usageScaled = (d.cost || 0) / scaleFactor;
+        return {
+            timestamp: d.timestamp,
+            rate: d.rate,
+            y1: standingChargeScaled,
+            y2: standingChargeScaled + usageScaled,
+        };
+    });
 
     function formatTick(d) {
         const isMidnight = d.getHours() === 0 && d.getMinutes() === 0;
-        if (durationHours <= 24) return d3.timeFormat("%H:%M")(d);
         if (isMidnight) {
             if (d.getMonth() === 0 && d.getDate() === 1) return d3.timeFormat("%Y")(d);
             return d3.timeFormat("%b %d")(d);
         }
-        return durationHours > 48 ? "" : d3.timeFormat("%H:%M")(d);
+        if (durationHours <= 24) return d3.timeFormat("%H:%M")(d);
+        if (durationHours > 48) return "";
+        return d3.timeFormat("%H:%M")(d);
     }
 
     const plot = Plot.plot({
@@ -74,16 +115,9 @@ function render() {
             ticks: 12,
             domain: [startDate, endDate],
         },
-        y: { grid: true },
+        y: { grid: true, zero: true },
         color: priceColors,
         marks: [
-            // Cost
-            Plot.rectY(data, {
-                x: 'timestamp',
-                y: d => d.cost / scaleFactor,
-                interval: interval,
-                fill: 'rate',
-            }),
             // Price
             Plot.rectY(data, {
                 x: 'timestamp',
@@ -93,6 +127,30 @@ function render() {
                 fillOpacity: 0.2,
                 mixBlendMode: "multiply",
             }),
+            Plot.rectY(standingChargeRows, {
+                x: 'timestamp',
+                y: 'y2',
+                interval: interval,
+                fill: d => d.hasUsage ? d.rate : '#e0e0e0',
+                fillOpacity: d => d.hasUsage ? 0.22 : 0.6,
+            }),
+            Plot.rectY(standingChargeRows, {
+                x: 'timestamp',
+                y: 'y2',
+                interval: interval,
+                fill: 'url(#stripes)',
+                fillOpacity: 1,
+                stroke: 'none',
+                mixBlendMode: 'multiply',
+            }),
+            // Usage stacked above standing charge using y1/y2
+            Plot.rectY(usageRows, {
+                x: 'timestamp',
+                y1: 'y1',
+                y2: 'y2',
+                interval: interval,
+                fill: 'rate',
+            }),
             // Consumption
             Plot.lineY(data, {
                 x: 'timestamp',
@@ -100,6 +158,8 @@ function render() {
                 stroke: "rgba(0, 127, 200, 0.8)",
                 strokeWidth: 2,
             }),
+            // Baseline at zero to anchor bars
+            Plot.ruleY([0]),
             Plot.axisY({ anchor: "left", label: "Used Energy (kWh)" }),
             Plot.axisY({
                 anchor: "right",
@@ -114,19 +174,39 @@ function render() {
             }),
             Plot.tip(data, Plot.pointerX({
                 x: "timestamp",
-                y: d => d3.max([d.cost / scaleFactor, d.rate / scaleFactor, d.consumption]),
-                title: d => [
-                    `Time: ${d3.timeFormat("%Y-%m-%d %H:%M")(d.timestamp)}`,
-                    `Usage: ${(d.consumption || 0).toFixed(3)} kWh`,
-                    `Agile Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
-                    `Cost: ${(d.cost || 0).toFixed(2)} p`
-                ].join("\n")
+                y: function(d) {
+                    let standingChargeFraction = 0;
+                    if (d.consumption !== null && d.consumption !== undefined) {
+                        standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
+                    }
+                    const costValue = (d.cost || 0) + standingChargeFraction;
+                    const rateValue = d.rate || 0;
+                    const consumptionValue = d.consumption || 0;
+                    return d3.max([costValue / scaleFactor, rateValue / scaleFactor, consumptionValue]);
+                },
+                title: function(d) {
+                    let standingChargeFraction = 0;
+                    if (d.consumption !== null && d.consumption !== undefined) {
+                        standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
+                    }
+                    const totalSlotCost = (d.cost || 0) + standingChargeFraction;
+                    return [
+                        `Time: ${d3.timeFormat("%H:%M")(d.timestamp)}`,
+                        `Usage: ${(d.consumption || 0).toFixed(3)} kWh`,
+                        `Unit Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
+                        `Usage Cost: ${(d.cost || 0).toFixed(2)} p`,
+                        `Standing Charge: ${standingChargeFraction.toFixed(2)} p`,
+                        `Total Cost: ${totalSlotCost.toFixed(2)} p`
+                    ].join("\n");
+                }
             })),
         ],
     });
 
     const chart = document.getElementById("chart");
     chart.style.cursor = 'crosshair';
+
+    addStripes(plot);
 
     // Remove spinner if present
     const spinner = chart.querySelector(".spinner");
@@ -138,52 +218,51 @@ function render() {
         plotDiv.replaceChildren(plot);
     }
 
-    // Calculate total cost
-    const totalCost = data.reduce((sum, d) => sum + (d.cost || 0), 0);
+    // Calculate usage-only cost and standing charge over the window period
+    const usageCost = data.reduce((sum, d) => sum + (d.cost || 0), 0);
+
+    // Standing charge: sum apportioned to each visible slot
+    // Group slots by day to be careful about fractional day floating point arithmetic
+    const standingCharge = Array.from(d3.group(slotsWithConsumption, d => dayKeyUTC(d.timestamp)))
+        .reduce((sum, [dayKey, slots]) => {
+            const dailyStandingCharge = standingChargeMap.get(dayKey) || 0;
+            return sum + (dailyStandingCharge * slots.length / slotsPerDay);
+        }, 0);
+
+    const totalCost = usageCost + standingCharge;
 
     // Calculate hours covered (based on actual data points)
-    const period = data.length > 0
-        ? 0.5 + (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60)
-        : 0;
+    let period = 0;
+    if (data.length > 0) {
+        period = intervalHours + (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60);
+    }
 
     // Calculate average hourly cost
-    const avgHourlyCost = period > 0 ? totalCost / period : 0;
+    let avgHourlyCost = 0;
+    if (period > 0) {
+        avgHourlyCost = totalCost / period;
+    }
 
     // Calculate average price (independent of consumption)
     // This will vary depending on the time-of-use tariff, e.g. Octopus Agile.
     // For Fixed and Flexible tariffs, this is (mostly) constant.
-    const avgPrice = data.length > 0
-        ? data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length
-        : 0;
+    let avgPrice = 0;
+    if (data.length > 0) {
+        avgPrice = data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length;
+    }
 
     // Calculate total consumption
     const totalConsumption = data.reduce((sum, d) => sum + (d.consumption || 0), 0);
 
-    // Calculate interval duration in hours (for power calculation)
-    // The consumption values are energy (kWh) over the interval period
-    let intervalHours = 0.5; // Default: 30 minutes
-    if (durationHours > 24 * 30) {
-        intervalHours = 24; // Daily aggregation
-    } else if (durationHours > 24 * 7) {
-        intervalHours = 1; // Hourly aggregation
+    // Calculate average and max power (kW)
+    let avgPower = 0;
+    if (data.length > 0) {
+        avgPower = data.reduce((sum, d) => sum + (d.consumption || 0), 0) / data.length / intervalHours;
     }
 
-    // Calculate average and max power (kW)
-    const avgPower = data.length > 0
-        ? data.reduce((sum, d) => sum + (d.consumption || 0), 0) / data.length / intervalHours
-        : 0;
-    const maxPower = data.length > 0
-        ? Math.max(...data.map(d => (d.consumption || 0) / intervalHours))
-        : 0;
-
-    // Format cost display: £ for values over 100p
-    function formatCost(cost) {
-        if (cost > 100) {
-            const pounds = cost / 100;
-            return `£${pounds.toFixed(2)}`;
-        } else {
-            return `${cost.toFixed(2)}p`;
-        }
+    let maxPower = 0;
+    if (data.length > 0) {
+        maxPower = Math.max(...data.map(d => (d.consumption || 0) / intervalHours));
     }
 
     // Update Cost Summary Values in DOM
@@ -203,11 +282,14 @@ function render() {
     const costTotalElem = document.getElementById('val-cost-total');
     if (costTotalElem) costTotalElem.innerHTML = formatCost(totalCost);
 
-    const costHourlyElem = document.getElementById('val-cost-hourly');
-    if (costHourlyElem) costHourlyElem.innerHTML = formatCost(avgHourlyCost);
-
     const costPriceElem = document.getElementById('val-cost-price');
     if (costPriceElem) costPriceElem.textContent = avgPrice.toFixed(2);
+
+    const costUsageElem = document.getElementById('val-cost-usage');
+    if (costUsageElem) costUsageElem.textContent = formatCost(usageCost);
+
+    const costStandingChargeElem = document.getElementById('val-cost-standing-charge');
+    if (costStandingChargeElem) costStandingChargeElem.textContent = formatCost(standingCharge);
 
     // Update URL without refreshing (Debounced)
     updateUrl(startStr, endStr);

@@ -1,7 +1,8 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getPriceDistribution } from '/js/db.js';
-import { priceColors } from '/js/colors.js';
+import { initDatabase, getPriceDistribution, getStandingCharge, getSlotCountsByDay, getTimeWindow } from '/js/db.js';
+import { priceColors, addStripes } from '/js/colors.js';
+import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
@@ -34,20 +35,23 @@ function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const data = getPriceDistribution(db, startStr, endStr, 'IMPORT');
-
-    function formatCost(cost) {
-        if (cost > 100) {
-            const pounds = cost / 100;
-            return `£${pounds.toFixed(2)}`;
-        } else {
-            return `${cost.toFixed(2)}p`;
-        }
-    }
+    const { data, timeWindow } = getPriceDistribution(db, startStr, endStr, 'IMPORT');
+    const { slotsPerDay } = getTimeWindowInfo(timeWindow);
 
     const maxX = d3.max(data, d => d.rate) || 0;
     const ceilX = Math.ceil(maxX / 10) * 10;
     const interval = 0.5;
+
+    // Standing charge total map and slot counts
+    const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
+    const slotsByDay = getSlotCountsByDay(db, startStr, endStr, 'IMPORT');
+    let slotBasedStandingCharge = 0;
+    let totalSlotsPeriod = 0;
+    for (const [day, standingCharge] of standingChargeMap.entries()) {
+        const slots = slotsByDay.get(day) || 0;
+        slotBasedStandingCharge += (standingCharge || 0) * (slots / slotsPerDay);
+        totalSlotsPeriod += slots;
+    }
 
     // 1. Pre-calculate bins
     const thresholds = d3.range(0, ceilX + interval, interval);
@@ -60,16 +64,34 @@ function render() {
         // bin is an array of data points, with x0 and x1
         const consumption = d3.sum(bin, d => d.consumption);
         const cost = d3.sum(bin, d => d.cost);
+        const slotsCount = d3.sum(bin, d => d.slots || 0);
         return {
             rate_start: bin.x0,
             rate_end: bin.x1,
             rate_mid: (bin.x0 + bin.x1) / 2,
             consumption: consumption,
-            cost: cost
+            cost: cost,
+            slots: slotsCount
         };
     }).filter(d => d.consumption > 0);
 
-    const maxY = d3.max(inputs, d => d.cost) || 0;
+    let maxY = 0;
+
+    // Compute standing charge per slot across the period
+    let standingChargePerSlot = 0;
+    if (totalSlotsPeriod > 0) {
+        standingChargePerSlot = slotBasedStandingCharge / totalSlotsPeriod;
+    }
+
+    // For each input bin, compute standing charge contribution based on slots in that bin
+    inputs.forEach(d => {
+        const standingChargeContribution = (d.slots || 0) * standingChargePerSlot;
+        d.standing_charge = standingChargeContribution;
+        d.cost_with_standing_charge = d.cost + standingChargeContribution;
+    });
+
+    // Recompute maxY to include stacked totals
+    maxY = d3.max(inputs, d => d.cost_with_standing_charge) || d3.max(inputs, d => d.cost) || 0;
 
     // 2. Generate Iso-Usage Lines
     // Cost (y) = Usage (m) * Rate (x)
@@ -135,14 +157,34 @@ function render() {
                 });
             }),
 
-            // Cost Bars
+            // Standing charges
             Plot.rectY(inputs, {
                 x1: "rate_start",
                 x2: "rate_end",
-                y: "cost",
+                y: "standing_charge",
+                fill: 'rate_mid',
+                fillOpacity: 0.8,
+                stroke: 'none'
+            }),
+            // Stripes overlay on standing charge (diagonal pattern)
+            Plot.rectY(inputs, {
+                x1: "rate_start",
+                x2: "rate_end",
+                y: "standing_charge",
+                fill: 'url(#stripes)',
+                fillOpacity: 1,
+                stroke: 'none',
+                mixBlendMode: 'multiply'
+            }),
+            // Usage bars stacked on top of standing charges
+            Plot.rectY(inputs, {
+                x1: "rate_start",
+                x2: "rate_end",
+                y1: "standing_charge",
+                y2: "cost_with_standing_charge",
                 fill: "rate_end",
                 tip: true,
-                title: d => `Rate: ${d.rate_start} - ${d.rate_end} p/kWh\nUsage: ${d.consumption.toFixed(3)} kWh\nCost: ${formatCost(d.cost)}`
+                title: d => `Rate: ${d.rate_start} - ${d.rate_end} p/kWh\nUsage: ${d.consumption.toFixed(3)} kWh\nUsage cost: ${formatCost(d.cost)}\nStanding Charge: ${formatCost(d.standing_charge)}\nTotal: ${formatCost(d.cost_with_standing_charge)}`
             }),
             Plot.axisY({
                 anchor: "left",
@@ -166,6 +208,8 @@ function render() {
     if (plotDiv) {
         plotDiv.replaceChildren(plot);
     }
+
+    addStripes(plot);
 
     // Update URL without refreshing
     updateUrl(startStr, endStr);

@@ -2,6 +2,7 @@ import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { initDatabase, getTimingByTimeOfDay } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
+import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
@@ -34,7 +35,8 @@ function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const data = getTimingByTimeOfDay(db, startStr, endStr, 'IMPORT');
+    const { data, timeWindow } = getTimingByTimeOfDay(db, startStr, endStr, 'IMPORT');
+    const { slotsPerDay } = getTimeWindowInfo(timeWindow);
 
     const maxConsumption = d3.max(data, d => d.consumption) || 1;
 
