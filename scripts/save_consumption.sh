@@ -7,9 +7,12 @@ SERIAL="..."
 
 export OCTOPUS_API_KEY="$(pass "octopus.energy/${ACCOUNT_ID}/OCTOPUS_API_KEY")"
 
-python ./consumption.py --mpan "${MPAN}" --serial "${SERIAL}" \
-    > "data/consumption-${MPAN}-${SERIAL}.json"
+python ./consumption.py --mpan "${MPAN}" --serial "${SERIAL}"
 
-python ./save_consumption_data.py --account-id "${ACCOUNT_ID}" "data/consumption-${MPAN}-${SERIAL}.json" data/power.sqlite3
+python ./save_consumption_data.py \
+    --account-id "${ACCOUNT_ID}" \
+    --mpan "${MPAN}" \
+    --serial "${SERIAL}" \
+    data/power.sqlite3
 
 ./scripts/version_db.sh

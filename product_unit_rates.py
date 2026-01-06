@@ -1,9 +1,9 @@
 import requests
 import os
 import json
-import sys
 
 from argparse import ArgumentParser
+from pprint import pprint
 
 parser = ArgumentParser()
 parser.add_argument('--product-code', required=True)
@@ -23,12 +23,13 @@ def main():
 
     # This is a public API
     response = requests.get(url, **kwargs)
-    try:
-        data = response.json()
-    except Exception as e:
-        print(e)
-        breakpoint()
-    print(json.dumps(data, indent=2))
+    data = response.json()
+
+    # Hardcoded template
+    data_file = f'data/products-{product_code}-{tariff_code}-unit-rates.json'
+    with open(data_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    print(f'Saved unit rates to {data_file}')
 
 
 if __name__ == '__main__':

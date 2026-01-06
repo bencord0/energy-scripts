@@ -6,15 +6,18 @@ function save_agile_tariff_rates() {
     PRODUCT_CODE="${1}"
     TARIFF_CODE="${2}"
 
-    python ./tariff_rates.py \
+    python ./product_unit_rates.py \
         --product-code "${PRODUCT_CODE}" \
-        --tariff-code "${TARIFF_CODE}" \
-        > "data/tariff-${TARIFF_CODE}.json"
+        --tariff-code "${TARIFF_CODE}"
+
+    python ./product_standing_charges.py \
+        --product-code "${PRODUCT_CODE}" \
+        --tariff-code "${TARIFF_CODE}"
 
     python ./save_tariff_data.py \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
-        "data/tariff-${TARIFF_CODE}.json" data/power.sqlite3
+        data/power.sqlite3
 }
 
 save_agile_tariff_rates AGILE-24-10-01          E-1R-AGILE-24-10-01-A

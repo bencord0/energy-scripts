@@ -53,7 +53,11 @@ def main():
         },
     )
 
-    print(json.dumps(response.json(), indent=2))
+    data = response.json()
+    data_file = f'data/consumption-{mpan}-{serial}.json'
+    with open(data_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    print(f'Saved consumption data to {data_file}')
 
 
 if __name__ == '__main__':

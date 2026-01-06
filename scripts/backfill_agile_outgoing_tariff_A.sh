@@ -7,16 +7,19 @@ function save_agile_tariff_rates() {
     TARIFF_CODE="${2}"
     PAGE="${3}"
 
-    python ./tariff_rates.py \
+    python ./product_unit_rates.py \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
-        --page "${PAGE}" \
-        > "data/tariff-${TARIFF_CODE}.json"
+        --page "${PAGE}"
+
+    python ./product_standing_charges.py \
+        --product-code "${PRODUCT_CODE}" \
+        --tariff-code "${TARIFF_CODE}"
 
     python ./save_tariff_data.py \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
-        "data/tariff-${TARIFF_CODE}.json" data/power.sqlite3
+        data/power.sqlite3
 }
 
 for page in $(seq 1 10); do

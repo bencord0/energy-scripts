@@ -1,20 +1,23 @@
 import sqlite3
 import json
-
+import os
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
 parser.add_argument('--account-id', required=True)
-parser.add_argument('data')
+parser.add_argument('--mpan', required=True)
+parser.add_argument('--serial', required=True)
 parser.add_argument('db')
 
 
 def main():
     args = parser.parse_args()
 
+    data_file = f'data/consumption-{args.mpan}-{args.serial}.json'
+
     # Expect JSON response from
     # https://developer.octopus.energy/rest/reference/#tag/v1/operation/List%20consumption%20for%20an%20electricity%20meter
-    with open(args.data) as f:
+    with open(data_file) as f:
         results = json.loads(f.read())['results']
 
     connection = connect_db(args.db)
