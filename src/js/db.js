@@ -1,6 +1,6 @@
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-const DB_VERSION = '2026-01-05T20:30:15Z';
+const DB_VERSION = '2026-01-06T16:00:26Z';
 
 let sqlite3Promise = null;
 async function getSqlite3() {
