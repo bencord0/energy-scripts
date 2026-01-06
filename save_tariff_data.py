@@ -35,7 +35,7 @@ def main():
         standing_charge_data = json.load(f)['results']
 
     for rate in standing_charge_data:
-        if rate.get('payment_method') == 'DIRECT_DEBIT':
+        if rate.get('payment_method') in ('DIRECT_DEBIT', None):
             standing_charge = float(rate.get('value_inc_vat', 0))
             print(f'Using standing charge from {standing_charges_file}: {standing_charge} pence/day')
             break
@@ -77,9 +77,10 @@ def main():
                             tariff_code,
                             valid_from,
                             valid_to,
-                            value)
-                        VALUES(?, ?, ?, ?, ?)''',
-                    (product_code, tariff_code, valid_from, valid_to, value))
+                            value,
+                            daily_standing_charge)
+                        VALUES(?, ?, ?, ?, ?, ?)''',
+                    (product_code, tariff_code, valid_from, valid_to, value, standing_charge))
                 print('OK')
             except sqlite3.IntegrityError as ie:
                 print('IntegrityError')
@@ -100,7 +101,7 @@ def migrate_db(connection):
                 product_code TEXT NOT NULL,
                 tariff_code  TEXT NOT NULL,
                 type         TEXT NOT NULL, -- IMPORT or EXPORT
-                standing_charge REAL DEFAULT 0,
+                standing_charge REAL,
                 PRIMARY KEY (product_code, tariff_code)
             );
             CREATE TABLE IF NOT EXISTS tariff_rates (
@@ -109,6 +110,7 @@ def migrate_db(connection):
                 valid_from   TEXT NOT NULL, -- timestamp, use UTC date arithmetic
                 valid_to     TEXT,          -- timestamp, use UTC date arithmetic
                 value        REAL,          -- If precision is needed, use a TEXT field and integer aritmetic.
+                daily_standing_charge REAL,
                 PRIMARY KEY (product_code, tariff_code, valid_from)
             );
             COMMIT;
