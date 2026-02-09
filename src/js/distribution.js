@@ -2,6 +2,7 @@ import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { initDatabase, getPriceDistribution, getStandingCharge, getSlotCountsByDay, getTimeWindow } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
+import { importThresholds, exportThresholds } from '/js/thresholds.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const { sqlite3, db } = await initDatabase();
@@ -233,6 +234,32 @@ function render() {
             }),
             // Base line at Y=0
             Plot.ruleY([0]),
+            // Representative lines of common tariffs
+            Plot.ruleX(importThresholds, {
+                x: "value",
+                y1: 0,
+                y2: maxY,
+                stroke: "color",
+                strokeWidth: 1,
+                strokeDasharray: "4,4",
+                tip: true,
+                title: d => [
+                    d.name,
+                    `Rate: ${formatCost(d.value)}`,
+                ].join("\n"),
+            }),
+            Plot.ruleX(exportThresholds, {
+                x: "value",
+                y: minY,
+                stroke: "color",
+                strokeWidth: 1,
+                strokeDasharray: "4,4",
+                tip: true,
+                title: d => [
+                    d.name,
+                    `Rate: ${formatCost(d.value)}`,
+                ].join("\n"),
+            }),
         ],
         marginRight: 80, // space for iso labels
         marginLeft: 60,
