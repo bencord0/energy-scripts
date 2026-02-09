@@ -2,16 +2,24 @@
 set -e -o pipefail
 
 ACCOUNT_ID="A-..."
-MPAN="..."
+IMPORT_MPAN="..."
+EXPORT_MPAN="..."
 SERIAL="..."
 
-export OCTOPUS_API_KEY="$(pass "octopus.energy/${ACCOUNT_ID}/OCTOPUS_API_KEY")"
+. <(pass "octopus.energy/env")
 
-python ./consumption.py --mpan "${MPAN}" --serial "${SERIAL}"
+python ./consumption.py --mpan "${IMPORT_MPAN}" --serial "${SERIAL}"
+python ./consumption.py --mpan "${EXPORT_MPAN}" --serial "${SERIAL}"
 
 python ./save_consumption_data.py \
     --account-id "${ACCOUNT_ID}" \
-    --mpan "${MPAN}" \
+    --mpan "${IMPORT_MPAN}" \
+    --serial "${SERIAL}" \
+    data/power.sqlite3
+
+python ./save_generation_data.py \
+    --account-id "${ACCOUNT_ID}" \
+    --mpan "${EXPORT_MPAN}" \
     --serial "${SERIAL}" \
     data/power.sqlite3
 
