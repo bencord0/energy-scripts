@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e -o pipefail
-set -x
 
 function save_agile_tariff_rates() {
     PRODUCT_CODE="${1}"
