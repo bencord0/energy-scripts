@@ -53,7 +53,12 @@ def main():
         },
     )
 
-    data = response.json()
+    try:
+        data = response.json()
+    except Exception:
+        breakpoint()
+        raise
+
     data_file = f'data/consumption-{mpan}-{serial}.json'
     with open(data_file, 'w') as f:
         json.dump(data, f, indent=2)
