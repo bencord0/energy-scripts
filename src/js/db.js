@@ -1,6 +1,6 @@
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-const DB_VERSION = '2026-01-06T19:45:15Z';
+const DB_VERSION = '2026-02-08T23:40:51Z';
 
 let sqlite3Promise = null;
 async function getSqlite3() {
@@ -44,14 +44,8 @@ export async function getDataBuffer() {
                 db.close();
 
                 if (dbVersion === DB_VERSION) {
-                    const fetchDate = new Date(cachedResponse.headers.get('date'));
-                    const now = new Date();
-                    const oneHour = 3600 * 1000;
-
-                    if (now - fetchDate < oneHour) {
-                        console.log('Using cached database (version ' + dbVersion + ')');
-                        return buffer;
-                    }
+                    console.log('Using cached database (version ' + dbVersion + ')');
+                    return buffer;
                 } else {
                     console.warn('Database version mismatch. Expected: ' + DB_VERSION + ', Found: ' + dbVersion);
                 }
@@ -70,10 +64,13 @@ export async function getDataBuffer() {
 }
 
 export async function initDatabase() {
-    const sqlite3 = await getSqlite3();
-    const dataBuffer = await getDataBuffer();
+    const [sqlite3, dataBuffer] = await Promise.all([
+        getSqlite3(),
+        getDataBuffer(),
+    ]);
 
-    const db = new sqlite3.oo1.DB();
+    //const db = new sqlite3.oo1.DB();
+    const db = new sqlite3.oo1.JsStorageDb('local');
 
     const rc = sqlite3.capi.sqlite3_deserialize(
         db.pointer,
@@ -93,9 +90,9 @@ export function getTimeWindow(startStr, endStr) {
     const endDate = new Date(endStr);
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    if (durationHours > 24 * 30) {
+    if (durationHours > 24 * 20) {
         return '1d';
-    } else if (durationHours > 24 * 7) {
+    } else if (durationHours > 24 * 8) {
         return '1h';
     } else {
         return '30m';
@@ -108,12 +105,15 @@ export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
 
     const sql = `
         SELECT
-            date(r.valid_from) || 'T00:00:00Z',
-            strftime('%Y-%m-%dT%H:00:00Z', r.valid_from),
-            r.valid_from,
+            strftime('%Y-%m-%dT00:00:00Z', r.valid_from), -- daily
+            strftime('%Y-%m-%dT%H:00:00Z', r.valid_from), -- hourly
+            r.valid_from,                                 -- half-hourly
+
             SUM(c.consumption),
+            SUM(c.generation),
             AVG(r.value),
-            SUM(c.consumption * r.value)
+            SUM(c.consumption * r.value),
+            SUM(c.generation * r.value)
         FROM tariff_rates as r
         JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
         LEFT JOIN consumption as c ON r.valid_from = c.interval_start
@@ -142,8 +142,10 @@ export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
             data.push({
                 timestamp: new Date(row[timeColIdx]),
                 consumption: row[3],
-                rate: row[4],
-                cost: row[5],
+                generation: row[4],
+                rate: row[5],
+                cost: row[6],
+                sale: row[7],
             });
         },
     });
@@ -151,22 +153,26 @@ export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
     return { data, timeWindow };
 }
 
-export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
+export function getPriceDistribution(db, startStr, endStr) {
     const timeWindow = getTimeWindow(startStr, endStr);
     const sql = `
         SELECT
-            r.value,
-            SUM(c.consumption),
-            COUNT(c.interval_start) as slots,
-            (r.value * SUM(c.consumption)) as cost
+            import.value as import_rate,
+            export.value as export_rate,
+            c.consumption as consumption,
+            c.generation as generation,
+            1 as slots,
+            (import.value * c.consumption) as cost,
+            (export.value * c.generation) as sale
         FROM consumption as c
-        LEFT JOIN tariff_rates as r
-        ON c.interval_start = r.valid_from
-        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        LEFT JOIN tariff_rates as import
+        LEFT JOIN tariff_rates as export
+        ON c.interval_start = import.valid_from AND c.interval_start = export.valid_from
+        JOIN products as pimport ON import.product_code = pimport.product_code AND import.tariff_code = pimport.tariff_code
+        JOIN products as pexport ON export.product_code = pexport.product_code AND export.tariff_code = pexport.tariff_code
         WHERE c.interval_start >= $start AND c.interval_start < $end
-          AND p.type = $type
-        GROUP BY r.value
-        ORDER BY r.value ASC
+            AND pimport.type = 'IMPORT'
+            AND pexport.type = 'EXPORT'
     `;
 
     const data = [];
@@ -175,46 +181,41 @@ export function getPriceDistribution(db, startStr, endStr, type = 'IMPORT') {
         bind: {
             $start: startStr,
             $end: endStr,
-            $type: type
         },
         callback: (row) => {
             data.push({
-                rate: row[0],
-                consumption: row[1],
-                slots: row[2],
-                cost: row[3],
+                import_rate: row[0],
+                export_rate: row[1],
+                consumption: row[2],
+                generation: row[3],
+                slots: row[4],
+                cost: row[5],
+                sale: row[6],
             });
         },
     });
     return { data, timeWindow };
 }
 
-export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
-    const timeWindow = getTimeWindow(startStr, endStr);
-
-    const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
-    const intervalMinutes = {
-        "1d": 1440,
-        "1h": 60,
-        "30m": 30,
-    }[timeWindow];
-
-    // Query all consumption data within the window
-    // Calculate variants for different time windows in a single expression
+export function getConsumptionByTimeOfDay(db, startStr, endStr) {
+    // Query all consumption data within the window, grouped by 30-minute time of day
     const sql = `
         SELECT
-            '00:00' as t_1d,
-            strftime('%H:00', c.interval_start) as t_1h,
             strftime('%H:%M', c.interval_start) as t_30m,
-            r.value as rate,
-            SUM(c.consumption) as consumption
+            import.value as import_rate,
+            export.value as export_rate,
+            SUM(c.consumption) as consumption,
+            SUM(c.generation) as generation
         FROM consumption as c
-        LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
-        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
+        LEFT JOIN tariff_rates as import ON c.interval_start = import.valid_from
+        LEFT JOIN tariff_rates as export ON c.interval_start = export.valid_from
+        JOIN products as pimport ON import.product_code = pimport.product_code AND pimport.tariff_code = pimport.tariff_code
+        JOIN products as pexport ON export.product_code = pexport.product_code AND pexport.tariff_code = pexport.tariff_code
         WHERE c.interval_start >= $start AND c.interval_start < $end
-          AND p.type = $type
-        GROUP BY t_30m, rate
-        ORDER BY t_30m ASC, rate DESC
+          AND pimport.type = 'IMPORT'
+          AND pexport.type = 'EXPORT'
+        GROUP BY t_30m, import_rate
+        ORDER BY t_30m ASC, import_rate DESC
     `;
 
     const data = [];
@@ -223,33 +224,32 @@ export function getTimingByTimeOfDay(db, startStr, endStr, type = 'IMPORT') {
         bind: {
             $start: startStr,
             $end: endStr,
-            $type: type
         },
         callback: (row) => {
-            const timeStr = row[timeColIdx];
-            const rate = row[3];
-            const consumption = row[4];
+            const timeStr = row[0];
             const [hours, minutes] = timeStr.split(':').map(Number);
 
             // Create a date object for today with the time of day
             const timestamp = new Date();
             timestamp.setHours(hours, minutes, 0, 0);
 
-            // Create end timestamp
+            // Create end timestamp (30 minutes later)
             const timestampEnd = new Date(timestamp);
-            timestampEnd.setMinutes(timestampEnd.getMinutes() + intervalMinutes);
+            timestampEnd.setMinutes(timestampEnd.getMinutes() + 30);
 
             data.push({
                 time_of_day: timeStr,
                 timestamp: timestamp,
                 timestampEnd: timestampEnd,
-                rate: rate,
-                consumption: consumption,
+                import_rate: row[1],
+                export_rate: row[2],
+                consumption: row[3],
+                generation:  row[4],
             });
         },
     });
 
-    return { data, timeWindow };
+    return { data, timeWindow: '30m' };
 }
 
 export function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
@@ -308,4 +308,28 @@ export function getSlotCountsByDay(db, startStr, endStr, type = 'IMPORT') {
     });
 
     return map;
+}
+
+export function getDataLimits(db) {
+    /**
+     * Returns the earliest and latest timestamps from consumption data.
+     * Returns null for both if no data exists.
+     */
+    const sql = `
+        SELECT MIN(interval_start), MAX(interval_start)
+        FROM consumption
+    `;
+
+    let earliestDate = null;
+    let latestDate = null;
+
+    db.exec({
+        sql: sql,
+        callback: (row) => {
+            if (row[0]) earliestDate = new Date(row[0]);
+            if (row[1]) latestDate = new Date(row[1]);
+        }
+    });
+
+    return { earliestDate, latestDate };
 }

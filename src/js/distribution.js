@@ -19,6 +19,9 @@ let endDate = new Date(urlParams.get('end') || today);
 
 let urlDebouncer;
 function updateUrl(startStr, endStr) {
+    if (startStr.endsWith('T00:00')) startStr = startStr.slice(0, 10);
+    if (endStr.endsWith('T00:00')) endStr = endStr.slice(0, 10);
+
     clearTimeout(urlDebouncer);
     urlDebouncer = setTimeout(() => {
         const url = new URL(window.location);
@@ -35,10 +38,10 @@ function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const { data, timeWindow } = getPriceDistribution(db, startStr, endStr, 'IMPORT');
-    const { slotsPerDay } = getTimeWindowInfo(timeWindow);
+    const { data, timeWindow } = getPriceDistribution(db, startStr, endStr);
+    const slotsPerDay = 48;
 
-    const maxX = d3.max(data, d => d.rate) || 0;
+    const maxX = d3.max(data, d => Math.max(d.import_rate, d.export_rate)) || 0;
     const ceilX = Math.ceil(maxX / 10) * 10;
     const interval = 0.5;
 
@@ -49,18 +52,23 @@ function render() {
     let totalSlotsPeriod = 0;
     for (const [day, standingCharge] of standingChargeMap.entries()) {
         const slots = slotsByDay.get(day) || 0;
-        slotBasedStandingCharge += (standingCharge || 0) * (slots / slotsPerDay);
+        const slotStandingCharge = (standingCharge || 0) * (slots / slotsPerDay);
+        slotBasedStandingCharge += slotStandingCharge;
         totalSlotsPeriod += slots;
     }
 
     // 1. Pre-calculate bins
     const thresholds = d3.range(0, ceilX + interval, interval);
-    const binFn = d3.bin()
-        .value(d => d.rate)
+    const importBinFn = d3.bin()
+        .value(d => d.import_rate)
+        .domain([0, ceilX])
+        .thresholds(thresholds);
+    const exportBinFn = d3.bin()
+        .value(d => d.export_rate)
         .domain([0, ceilX])
         .thresholds(thresholds);
 
-    const inputs = binFn(data).map(bin => {
+    const importBins = importBinFn(data).map(bin => {
         // bin is an array of data points, with x0 and x1
         const consumption = d3.sum(bin, d => d.consumption);
         const cost = d3.sum(bin, d => d.cost);
@@ -75,7 +83,19 @@ function render() {
         };
     }).filter(d => d.consumption > 0);
 
+    const exportBins = exportBinFn(data).map(bin => {
+        const generation = d3.sum(bin, d => d.generation);
+        const sale = d3.sum(bin, d => d.sale);
+        return {
+            rate_start: bin.x0,
+            rate_end: bin.x1,
+            generation: generation,
+            sale: sale,
+        };
+    }).filter(d => d.generation > 0);
+
     let maxY = 0;
+    let minY = 0;
 
     // Compute standing charge per slot across the period
     let standingChargePerSlot = 0;
@@ -84,27 +104,28 @@ function render() {
     }
 
     // For each input bin, compute standing charge contribution based on slots in that bin
-    inputs.forEach(d => {
+    importBins.forEach(d => {
         const standingChargeContribution = (d.slots || 0) * standingChargePerSlot;
         d.standing_charge = standingChargeContribution;
         d.cost_with_standing_charge = d.cost + standingChargeContribution;
     });
 
-    // Recompute maxY to include stacked totals
-    maxY = d3.max(inputs, d => d.cost_with_standing_charge) || d3.max(inputs, d => d.cost) || 0;
+    // Recompute maxY and minY to include stacked totals
+    maxY = d3.max(importBins, d => d.cost_with_standing_charge) || d3.max(inputs, d => d.cost) || 0;
+    minY = -d3.max(exportBins, d => d.sale) || 0;
 
     // 2. Generate Iso-Usage Lines
     // Cost (y) = Usage (m) * Rate (x)
     // These are straight lines y = mx
     // Find roughly the max usage in a bin to determine steps
-    const maxBarUsage = d3.max(inputs, d => d.consumption) || 0;
+    const maxBarUsage = d3.max(importBins, d => d.consumption) || 0;
 
     // Determine order of magnitude for steps
     const stepUsage = Math.pow(10, Math.floor(Math.log10(maxBarUsage || 1)));
     const isoUsage = [];
 
     // Generate 1x, 2x, 5x, 10x steps
-    [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50].forEach(m => {
+    [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 75, 100].forEach(m => {
         const u = stepUsage * m;
         // Filter out lines that are too small or too large relative to data
         if (u > maxBarUsage * 1.5 && u > (maxY / (ceilX || 1))) return;
@@ -132,7 +153,7 @@ function render() {
         y: {
             label: "Cost",
             grid: true,
-            domain: [0, maxY * 1.1], // give some headroom
+            domain: [minY, maxY * 1.1], // give some headroom
         },
         color: priceColors,
         marks: [
@@ -158,7 +179,7 @@ function render() {
             }),
 
             // Standing charges
-            Plot.rectY(inputs, {
+            Plot.rectY(importBins, {
                 x1: "rate_start",
                 x2: "rate_end",
                 y: "standing_charge",
@@ -167,7 +188,7 @@ function render() {
                 stroke: 'none'
             }),
             // Stripes overlay on standing charge (diagonal pattern)
-            Plot.rectY(inputs, {
+            Plot.rectY(importBins, {
                 x1: "rate_start",
                 x2: "rate_end",
                 y: "standing_charge",
@@ -176,21 +197,42 @@ function render() {
                 stroke: 'none',
                 mixBlendMode: 'multiply'
             }),
-            // Usage bars stacked on top of standing charges
-            Plot.rectY(inputs, {
+            // Import bars stacked on top of standing charges
+            Plot.rectY(importBins, {
                 x1: "rate_start",
                 x2: "rate_end",
                 y1: "standing_charge",
                 y2: "cost_with_standing_charge",
                 fill: "rate_end",
                 tip: true,
-                title: d => `Rate: ${d.rate_start} - ${d.rate_end} p/kWh\nUsage: ${d.consumption.toFixed(3)} kWh\nUsage cost: ${formatCost(d.cost)}\nStanding Charge: ${formatCost(d.standing_charge)}\nTotal: ${formatCost(d.cost_with_standing_charge)}`
+                title: d => [
+                    `Rate: ${d.rate_start} - ${d.rate_end} p/kWh`,
+                    `Usage: ${d.consumption.toFixed(3)} kWh`,
+                    `Usage cost: ${formatCost(d.cost)}`,
+                    `Standing Charge: ${formatCost(d.standing_charge)}`,
+                    `Total: ${formatCost(d.cost_with_standing_charge)}`,
+                ].join("\n"),
+            }),
+            // Export bars go below the x-axis
+            Plot.rectY(exportBins, {
+                x1: "rate_start",
+                x2: "rate_end",
+                y: d => -d.sale,
+                fill: "rate_end",
+                tip: true,
+                title: d => [
+                    `Rate: ${d.rate_start} - ${d.rate_end} p/kWh`,
+                    `Export: ${d.generation.toFixed(3)} kWh`,
+                    `Export sale: ${formatCost(d.sale)}`,
+                ].join("\n"),
             }),
             Plot.axisY({
                 anchor: "left",
                 label: "Cost",
-                tickFormat: (d) => `£${(d / 100).toFixed(2)}`
+                tickFormat: (d) => formatCost(d),
             }),
+            // Base line at Y=0
+            Plot.ruleY([0]),
         ],
         marginRight: 80, // space for iso labels
         marginLeft: 60,

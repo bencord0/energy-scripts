@@ -1,12 +1,14 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getTimingByTimeOfDay } from '/js/db.js';
+import { initDatabase, getConsumptionByTimeOfDay, getDataLimits } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
 window.db = db; // for debugging
+
+const { earliestDate, latestDate } = getDataLimits(db);
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -19,6 +21,10 @@ let endDate = new Date(urlParams.get('end') || today);
 
 let urlDebouncer;
 function updateUrl(startStr, endStr) {
+    // Truncate to day
+    startStr = startStr.slice(0, 10);
+    endStr = endStr.slice(0, 10);
+
     clearTimeout(urlDebouncer);
     urlDebouncer = setTimeout(() => {
         const url = new URL(window.location);
@@ -35,8 +41,7 @@ function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const { data, timeWindow } = getTimingByTimeOfDay(db, startStr, endStr, 'IMPORT');
-    const { slotsPerDay } = getTimeWindowInfo(timeWindow);
+    const { data, timeWindow } = getConsumptionByTimeOfDay(db, startStr, endStr);
 
     const maxConsumption = d3.max(data, d => d.consumption) || 1;
 
@@ -58,12 +63,22 @@ function render() {
             Plot.rectY(data, Plot.stackY({
                 x1: "timestamp",
                 x2: "timestampEnd",
-                y: "consumption",
-                fill: "rate",
-                order: "rate",
+                y: d => d.consumption - d.generation,
+                fill: d => (d.consumption - d.generation) > 0 ? d.import_rate : d.export_rate,
                 reverse: true,
                 tip: true,
-                title: d => `Time of Day: ${d3.timeFormat("%H:%M")(d.timestamp)}\nPrice: ${d.rate.toFixed(2)} p/kWh\nTotal Energy Usage: ${d.consumption.toFixed(3)} kWh`,
+                title: d => {
+                    let consumption = d.consumption || 0;
+                    let generation  = d.generation || 0;
+                    return [
+                        `Time of Day: ${d3.timeFormat("%H:%M")(d.timestamp)}`,
+                        `Imported: ${consumption.toFixed(3)} kWh`,
+                        `Import Price: ${d.import_rate.toFixed(2)} p/kWh`,
+                        `Exported: ${generation.toFixed(3)} kWh`,
+                        `Export Price: ${d.export_rate.toFixed(2)} p/kWh`,
+                    ].join("\n");
+                },
+
             })),
             Plot.ruleY([0]),
         ],
@@ -88,15 +103,14 @@ window.addEventListener('wheel', (e) => {
     e.preventDefault();
 
     if (e.deltaY !== 0) {
-        startDate.setHours(startDate.getHours() + e.deltaY);
+        startDate.setDate(startDate.getDate() + (e.deltaY / 10));
         if (startDate > dayBefore) {
             startDate.setTime(dayBefore.getTime());
         }
 
-        // Limit of our data
-        const earliestDay = new Date("2025-12-01");
-        if (startDate < earliestDay) {
-            startDate.setTime(earliestDay.getTime());
+        // Limit to available data range
+        if (earliestDate && startDate < earliestDate) {
+            startDate.setTime(earliestDate.getTime());
         }
     }
 

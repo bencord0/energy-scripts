@@ -15,11 +15,22 @@ const today = new Date().setHours(0, 0, 0, 0);
 const tomorrow = new Date(today + millisecondsPerDay);
 const yesterday = new Date(today - millisecondsPerDay);
 const dayBefore = new Date(yesterday - millisecondsPerDay);
-let startDate = new Date(urlParams.get('start') || yesterday);
+let startDate = new Date(urlParams.get('start') || dayBefore);
 let endDate = new Date(urlParams.get('end') || tomorrow);
 
 let urlDebouncer;
-function updateUrl(startStr, endStr) {
+function updateUrl(startStr, endStr, timeWindow) {
+    if (timeWindow === '1d') {
+        startStr = startStr.slice(0, 10);
+        endStr = endStr.slice(0, 10);
+    } else if (timeWindow === '1h') {
+        startStr = startStr.slice(0, 13) + ':00';
+        endStr = endStr.slice(0, 13) + ':00';
+    }
+
+    if (startStr.endsWith('T00:00')) startStr = startStr.slice(0, 10);
+    if (endStr.endsWith('T00:00')) endStr = endStr.slice(0, 10);
+
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout
     // https://developer.mozilla.org/en-US/docs/Web/API/Window/clearTimeout
     clearTimeout(urlDebouncer);
@@ -40,8 +51,19 @@ function render() {
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    const { data, timeWindow } = getConsumption(db, startStr, endStr, 'IMPORT');
+    const { data: importData, timeWindow } = getConsumption(db, startStr, endStr, 'IMPORT');
+    const { data: exportData } = getConsumption(db, startStr, endStr, 'EXPORT');
     const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
+
+    const exportInfoMap = new Map(exportData.map(d => [d.timestamp.getTime(), { rate: d.rate, sale: d.sale }]));
+    const data = importData.map(d => {
+        const exportInfo = exportInfoMap.get(d.timestamp.getTime()) || { rate: 0, sale: 0 };
+        return {
+            ...d,
+            exportRate: exportInfo.rate,
+            exportSale: exportInfo.sale
+        };
+    });
 
     const { slotsPerDay, intervalHours } = getTimeWindowInfo(timeWindow);
     const interval = {
@@ -59,13 +81,10 @@ function render() {
         return standingChargeMap.get(key) || 0;
     }
 
-    const maxKWh = d3.max(data, d => d.consumption) || 1;
 
-    // Compute maxP considering standing charge
-    const maxP = d3.max(data, d => {
-        const standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
-        return Math.max(d.rate || 0, (d.cost || 0) + standingChargeFraction);
-    }) || 40;
+    // Compute maxP considering standing charge and export rates
+    const maxP = 100;
+    const maxKWh = 10;
     const scaleFactor = maxP / maxKWh;
 
     // Precompute standing charge and usage stacked above the standing charge bar
@@ -105,34 +124,49 @@ function render() {
         return d3.timeFormat("%H:%M")(d);
     }
 
+    // Calculate available dimensions accounting for summary box and margins
+    const summaryElement = document.getElementById('cost-summary');
+    const bodyMargin = 40; // body margin (20px * 2)
+    const chartPadding = 20; // additional padding for chart
+
+    // Get the summary box height (it's either overlaid or stacked depending on viewport)
+    let summaryHeight = 0;
+    if (summaryElement && window.innerWidth <= 600) {
+        // On mobile, summary is stacked above the chart
+        summaryHeight = summaryElement.getBoundingClientRect().height + 8; // +8 for margin
+    }
+
+    const availableHeight = window.innerHeight - bodyMargin - summaryHeight - chartPadding;
+    const availableWidth = window.innerWidth - bodyMargin;
+
+    // Calculate appropriate tick count based on screen width
+    // Approximate label width: ~50px for dates, ~40px for times
+    const labelWidth = durationHours > 48 ? 50 : 40;
+    const maxTicks = Math.max(4, Math.floor(availableWidth / (labelWidth + 10)));
+    const tickCount = Math.min(12, maxTicks);
+
     const plot = Plot.plot({
-        height: window.innerHeight - 40,
-        width: window.innerWidth - 40,
+        height: Math.max(200, availableHeight),
+        width: Math.max(200, availableWidth),
         x: {
             type: "time",
             label: "timestamp",
             tickFormat: formatTick,
-            ticks: 12,
+            ticks: tickCount,
             domain: [startDate, endDate],
         },
         y: { grid: true, zero: true },
         color: priceColors,
         marks: [
-            // Price
-            Plot.rectY(data, {
-                x: 'timestamp',
-                y: d => d.rate / scaleFactor,
-                interval: interval,
-                fill: "#ccc",
-                fillOpacity: 0.2,
-                mixBlendMode: "multiply",
-            }),
+            // Standing charge overlay
             Plot.rectY(standingChargeRows, {
                 x: 'timestamp',
                 y: 'y2',
                 interval: interval,
                 fill: d => d.hasUsage ? d.rate : '#e0e0e0',
                 fillOpacity: d => d.hasUsage ? 0.22 : 0.6,
+                inset: 0,
+                shapeRendering: "crispEdges",
             }),
             Plot.rectY(standingChargeRows, {
                 x: 'timestamp',
@@ -142,14 +176,49 @@ function render() {
                 fillOpacity: 1,
                 stroke: 'none',
                 mixBlendMode: 'multiply',
+                inset: 0,
+                shapeRendering: "crispEdges",
             }),
-            // Usage stacked above standing charge using y1/y2
+            // Imported Usage stacked above standing charge using y1/y2
             Plot.rectY(usageRows, {
                 x: 'timestamp',
                 y1: 'y1',
                 y2: 'y2',
                 interval: interval,
                 fill: 'rate',
+                inset: 0,
+                shapeRendering: "crispEdges",
+            }),
+            // Exported Usage
+            Plot.rectY(data, {
+                x: 'timestamp',
+                y: d => (-d.sale || 0) / scaleFactor,
+                interval: interval,
+                fill: 'exportRate',
+                inset: 0,
+                shapeRendering: "crispEdges",
+            }),
+            // Import Price
+            Plot.rectY(data, {
+                x: 'timestamp',
+                y: d => d.rate / scaleFactor,
+                interval: interval,
+                fill: "#ccc",
+                fillOpacity: 0.4,
+                mixBlendMode: "multiply",
+                inset: 0,
+                shapeRendering: "crispEdges",
+            }),
+            // Export Price
+            Plot.rectY(data, {
+                x: 'timestamp',
+                y: d => -d.exportRate / scaleFactor,
+                interval: interval,
+                fill: "#ccc",
+                fillOpacity: 0.4,
+                mixBlendMode: "multiply",
+                inset: 0,
+                shapeRendering: "crispEdges",
             }),
             // Consumption
             Plot.lineY(data, {
@@ -157,6 +226,15 @@ function render() {
                 y: 'consumption',
                 stroke: "rgba(0, 127, 200, 0.8)",
                 strokeWidth: 2,
+                curve: "step-after",
+            }),
+            // Generation
+            Plot.lineY(data, {
+                x: 'timestamp',
+                y: d => -d.generation,
+                stroke: "rgba(0, 127, 200, 0.8)",
+                strokeWidth: 2,
+                curve: "step-after",
             }),
             // Baseline at zero to anchor bars
             Plot.ruleY([0]),
@@ -164,7 +242,7 @@ function render() {
             Plot.axisY({
                 anchor: "right",
                 label: "price (p/kWh), cost (p)",
-                tickFormat: y => (y * scaleFactor).toFixed(0),
+                tickFormat: y => formatCost((y * scaleFactor).toFixed(0)),
             }),
             // Current Time Marker
             Plot.ruleX([new Date()], {
@@ -172,31 +250,30 @@ function render() {
                 strokeWidth: 2,
                 strokeDasharray: "4,4"
             }),
+            // Tooltip with pointerX for time-series tracking
             Plot.tip(data, Plot.pointerX({
                 x: "timestamp",
-                y: function(d) {
-                    let standingChargeFraction = 0;
-                    if (d.consumption !== null && d.consumption !== undefined) {
-                        standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
-                    }
-                    const costValue = (d.cost || 0) + standingChargeFraction;
-                    const rateValue = d.rate || 0;
-                    const consumptionValue = d.consumption || 0;
-                    return d3.max([costValue / scaleFactor, rateValue / scaleFactor, consumptionValue]);
+                y: d => {
+                    const consumption = d.consumption || 0;
+                    const generation = d.generation || 0;
+                    return consumption - generation;
                 },
-                title: function(d) {
+                title: d => {
                     let standingChargeFraction = 0;
                     if (d.consumption !== null && d.consumption !== undefined) {
                         standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
                     }
-                    const totalSlotCost = (d.cost || 0) + standingChargeFraction;
+                    const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
                     return [
                         `Time: ${d3.timeFormat("%H:%M")(d.timestamp)}`,
-                        `Usage: ${(d.consumption || 0).toFixed(3)} kWh`,
-                        `Unit Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
-                        `Usage Cost: ${(d.cost || 0).toFixed(2)} p`,
+                        `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
+                        `Import Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
+                        `Import Cost: ${formatCost((d.cost || 0))}`,
+                        `Export: ${(d.generation || 0).toFixed(3)} kWh`,
+                        `Export Price: ${(d.exportRate || 0).toFixed(2)} p/kWh`,
+                        `Export Sale: ${formatCost((d.sale || 0))}`,
                         `Standing Charge: ${standingChargeFraction.toFixed(2)} p`,
-                        `Total Cost: ${totalSlotCost.toFixed(2)} p`
+                        `Total Cost: ${formatCost(totalSlotCost)}`
                     ].join("\n");
                 }
             })),
@@ -231,28 +308,23 @@ function render() {
 
     const totalCost = usageCost + standingCharge;
 
+    // Calculate total sale (export)
+    const totalSale = data.reduce((sum, d) => sum + (d.exportSale || 0), 0);
+
+    // Calculate net cost
+    const netCost = totalCost - totalSale;
+
     // Calculate hours covered (based on actual data points)
     let period = 0;
     if (data.length > 0) {
         period = intervalHours + (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60);
     }
 
-    // Calculate average hourly cost
-    let avgHourlyCost = 0;
-    if (period > 0) {
-        avgHourlyCost = totalCost / period;
-    }
-
-    // Calculate average price (independent of consumption)
-    // This will vary depending on the time-of-use tariff, e.g. Octopus Agile.
-    // For Fixed and Flexible tariffs, this is (mostly) constant.
-    let avgPrice = 0;
-    if (data.length > 0) {
-        avgPrice = data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length;
-    }
-
     // Calculate total consumption
     const totalConsumption = data.reduce((sum, d) => sum + (d.consumption || 0), 0);
+
+    // Calculate total exported (generation)
+    const totalExported = data.reduce((sum, d) => sum + (d.generation || 0), 0);
 
     // Calculate average and max power (kW)
     let avgPower = 0;
@@ -264,6 +336,21 @@ function render() {
     if (data.length > 0) {
         maxPower = Math.max(...data.map(d => (d.consumption || 0) / intervalHours));
     }
+
+    // Calculate average prices (independent of consumption)
+    let avgPrice = 0;
+    let avgSalePrice = 0;
+    if (data.length > 0) {
+        avgPrice = data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length;
+        avgSalePrice = data.reduce((sum, d) => sum + (d.exportRate || 0), 0) / data.length;
+    }
+
+    // Calculate effective prices (averages that account for consumption)
+    let effectivePrice = usageCost / totalConsumption;
+    if (!Number.isFinite(effectivePrice)) effectivePrice = 0;
+    let effectiveSalePrice = totalExported / totalSale;
+    if (!Number.isFinite(effectiveSalePrice)) effectiveSalePrice = 0;
+
 
     // Update Cost Summary Values in DOM
     const periodElem = document.getElementById('val-period');
@@ -278,10 +365,12 @@ function render() {
     const powerMaxElem = document.getElementById('val-power-max');
     if (powerMaxElem) powerMaxElem.textContent = maxPower.toFixed(3);
 
-    // For elements with HTML content (like the £/p span)
+    // Cost section
     const costTotalElem = document.getElementById('val-cost-total');
     if (costTotalElem) costTotalElem.innerHTML = formatCost(totalCost);
 
+    const effcPriceElem = document.getElementById('val-cost-effc');
+    if (effcPriceElem) effcPriceElem.textContent = effectivePrice.toFixed(2);
     const costPriceElem = document.getElementById('val-cost-price');
     if (costPriceElem) costPriceElem.textContent = avgPrice.toFixed(2);
 
@@ -291,8 +380,24 @@ function render() {
     const costStandingChargeElem = document.getElementById('val-cost-standing-charge');
     if (costStandingChargeElem) costStandingChargeElem.textContent = formatCost(standingCharge);
 
+    // Export section
+    const saleTotalElem = document.getElementById('val-sale-total');
+    if (saleTotalElem) saleTotalElem.innerHTML = formatCost(totalSale);
+
+    const powerExportedElem = document.getElementById('val-power-exported');
+    if (powerExportedElem) powerExportedElem.textContent = totalExported.toFixed(2);
+
+    const saleEffcElem = document.getElementById('val-sale-effc');
+    if (saleEffcElem) saleEffcElem.textContent = effectiveSalePrice.toFixed(2);
+    const salePriceElem = document.getElementById('val-sale-price');
+    if (salePriceElem) salePriceElem.textContent = avgSalePrice.toFixed(2);
+
+    // Summary section
+    const netCostElem = document.getElementById('val-net-cost');
+    if (netCostElem) netCostElem.innerHTML = formatCost(netCost);
+
     // Update URL without refreshing (Debounced)
-    updateUrl(startStr, endStr);
+    updateUrl(startStr, endStr, timeWindow);
 }
 
 // Initial render
@@ -343,71 +448,151 @@ window.addEventListener('resize', () => {
 });
 
 // Touch handling state
-let lastTouchX = null;
-let lastTouchDist = null;
+let activeTouches = new Map(); // Track all active touches by identifier
+let lastPanX = null;
+let lastPinchDist = null;
+let lastPinchCenter = null;
+let isGestureActive = false;
 
 const chartElement = document.getElementById('chart');
+const costSummary = document.getElementById('cost-summary');
+
+// Helper to check if a touch started on the summary box
+function isTouchOnSummary(touch) {
+    if (!costSummary) return false;
+    const rect = costSummary.getBoundingClientRect();
+    return (
+        touch.clientX >= rect.left &&
+        touch.clientX <= rect.right &&
+        touch.clientY >= rect.top &&
+        touch.clientY <= rect.bottom
+    );
+}
+
+// Helper to get distance between two touches
+function getTouchDistance(t1, t2) {
+    return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+}
+
+// Helper to get center point between two touches
+function getTouchCenter(t1, t2) {
+    return (t1.clientX + t2.clientX) / 2;
+}
+
+// Reset all touch tracking state
+function resetTouchState() {
+    activeTouches.clear();
+    lastPanX = null;
+    lastPinchDist = null;
+    lastPinchCenter = null;
+    isGestureActive = false;
+}
 
 chartElement.addEventListener('touchstart', (e) => {
-    if (e.target.closest('#cost-summary')) return;
-
-    if (e.touches.length === 1) {
-        lastTouchX = e.touches[0].clientX;
-    } else if (e.touches.length === 2) {
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        lastTouchX = (t1.clientX + t2.clientX) / 2;
+    // Track all new touches, filtering out those on summary
+    for (const touch of e.changedTouches) {
+        if (!isTouchOnSummary(touch)) {
+            activeTouches.set(touch.identifier, {
+                startX: touch.clientX,
+                startY: touch.clientY,
+                currentX: touch.clientX,
+                currentY: touch.clientY
+            });
+        }
     }
-}, { passive: false });
+
+    // Initialize gesture based on active touch count
+    const validTouches = Array.from(activeTouches.keys());
+
+    if (validTouches.length === 1) {
+        const touchData = activeTouches.get(validTouches[0]);
+        lastPanX = touchData.currentX;
+        lastPinchDist = null;
+        lastPinchCenter = null;
+        isGestureActive = true;
+    } else if (validTouches.length >= 2) {
+        // Get the first two valid touches from the event
+        const allTouches = Array.from(e.touches);
+        const validTouchPairs = allTouches.filter(t => activeTouches.has(t.identifier));
+
+        if (validTouchPairs.length >= 2) {
+            const t1 = validTouchPairs[0];
+            const t2 = validTouchPairs[1];
+            lastPinchDist = getTouchDistance(t1, t2);
+            lastPinchCenter = getTouchCenter(t1, t2);
+            lastPanX = null; // Disable pan when pinching
+            isGestureActive = true;
+        }
+    }
+}, { passive: true });
 
 chartElement.addEventListener('touchmove', (e) => {
-    if (e.target.closest('#cost-summary')) return;
+    if (!isGestureActive || activeTouches.size === 0) return;
+
+    // Update tracked touch positions
+    for (const touch of e.changedTouches) {
+        if (activeTouches.has(touch.identifier)) {
+            const data = activeTouches.get(touch.identifier);
+            data.currentX = touch.clientX;
+            data.currentY = touch.clientY;
+        }
+    }
+
+    // Get valid touches from current event
+    const allTouches = Array.from(e.touches);
+    const validTouches = allTouches.filter(t => activeTouches.has(t.identifier));
+
+    if (validTouches.length === 0) return;
+
+    // Prevent default to stop browser scrolling/zooming
     if (e.cancelable) e.preventDefault();
 
     const rect = chartElement.getBoundingClientRect();
     const duration = endDate.getTime() - startDate.getTime();
 
-    if (e.touches.length === 1 && lastTouchX !== null) {
-        // Pan
-        const currentX = e.touches[0].clientX;
-        const deltaX = lastTouchX - currentX; // Drag left = move forward in time (view moves right)
+    if (validTouches.length === 1 && lastPanX !== null) {
+        // Single finger pan
+        const currentX = validTouches[0].clientX;
+        const deltaX = lastPanX - currentX;
 
-        // Sensitivity factor could be adjusted. Currently 1 pixel = 1 pixel of time-width
-        const shift = (deltaX / rect.width) * duration;
-        startDate = new Date(startDate.getTime() + shift);
-        endDate = new Date(endDate.getTime() + shift);
+        // Apply pan - minimum threshold to avoid jitter
+        if (Math.abs(deltaX) > 1) {
+            const shift = (deltaX / rect.width) * duration;
+            startDate = new Date(startDate.getTime() + shift);
+            endDate = new Date(endDate.getTime() + shift);
+            lastPanX = currentX;
+        }
 
-        lastTouchX = currentX;
+    } else if (validTouches.length >= 2 && lastPinchDist !== null) {
+        // Pinch zoom
+        const t1 = validTouches[0];
+        const t2 = validTouches[1];
+        const currentDist = getTouchDistance(t1, t2);
+        const currentCenter = getTouchCenter(t1, t2);
 
-    } else if (e.touches.length === 2 && lastTouchDist !== null) {
-        // Pinch Zoom
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        const currentCenter = (t1.clientX + t2.clientX) / 2;
+        // Minimum distance threshold to avoid division issues
+        if (currentDist > 10 && lastPinchDist > 10) {
+            const factor = lastPinchDist / currentDist;
 
-        // Calculate zoom factor
-        // distance increased = zoom in (show smaller time range) -> factor < 1
-        // distance decreased = zoom out (show larger time range) -> factor > 1
-        // This is opposite to scroll wheel often, let's derive it:
-        // desired new duration = old_duration * (old_dist / new_dist)
+            // Apply limits and deadzone
+            if (Math.abs(factor - 1) > 0.01) {
+                const newDuration = Math.max(
+                    1000 * 60 * 30,
+                    Math.min(duration * factor, 1000 * 60 * 60 * 24 * 365)
+                );
 
-        const factor = lastTouchDist / currentDist;
+                // Calculate focus point relative to chart width
+                const mouseX = currentCenter - rect.left;
+                const mouseRatio = Math.max(0, Math.min(1, mouseX / rect.width));
+                const focusTime = startDate.getTime() + duration * mouseRatio;
 
-        // Apply limits
-        const newDuration = Math.max(1000 * 60 * 30, Math.min(duration * factor, 1000 * 60 * 60 * 24 * 365));
+                startDate = new Date(focusTime - newDuration * mouseRatio);
+                endDate = new Date(focusTime + newDuration * (1 - mouseRatio));
+            }
+        }
 
-        // Calculate focus point relative to chart width
-        const mouseX = currentCenter - rect.left;
-        const mouseRatio = Math.max(0, Math.min(1, mouseX / rect.width));
-        const focusTime = startDate.getTime() + duration * mouseRatio;
-
-        startDate = new Date(focusTime - newDuration * mouseRatio);
-        endDate = new Date(focusTime + newDuration * (1 - mouseRatio));
-
-        lastTouchDist = currentDist;
-        lastTouchX = currentCenter; // Update center for potential smooth transition to pan
+        lastPinchDist = currentDist;
+        lastPinchCenter = currentCenter;
     }
 
     if (!pendingUpdate) {
@@ -420,16 +605,45 @@ chartElement.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 chartElement.addEventListener('touchend', (e) => {
-    if (e.touches.length < 2) {
-        lastTouchDist = null;
+    // Remove ended touches from tracking
+    for (const touch of e.changedTouches) {
+        activeTouches.delete(touch.identifier);
     }
-    if (e.touches.length === 0) {
-        lastTouchX = null;
-    } else if (e.touches.length === 1) {
-        // Reset single touch anchor effectively to avoid jumps
-        lastTouchX = e.touches[0].clientX;
+
+    // Get remaining valid touches
+    const allTouches = Array.from(e.touches);
+    const validTouches = allTouches.filter(t => activeTouches.has(t.identifier));
+
+    if (validTouches.length === 0) {
+        // All touches ended
+        resetTouchState();
+    } else if (validTouches.length === 1) {
+        // Transition from pinch to pan
+        lastPanX = validTouches[0].clientX;
+        lastPinchDist = null;
+        lastPinchCenter = null;
+    } else if (validTouches.length >= 2) {
+        // Still pinching with remaining fingers
+        const t1 = validTouches[0];
+        const t2 = validTouches[1];
+        lastPinchDist = getTouchDistance(t1, t2);
+        lastPinchCenter = getTouchCenter(t1, t2);
+        lastPanX = null;
     }
-}, { passive: false });
+}, { passive: true });
+
+// Handle touch cancel (e.g., incoming call, gesture interrupted)
+chartElement.addEventListener('touchcancel', (e) => {
+    // Remove cancelled touches
+    for (const touch of e.changedTouches) {
+        activeTouches.delete(touch.identifier);
+    }
+
+    // If no touches remain, reset completely
+    if (activeTouches.size === 0) {
+        resetTouchState();
+    }
+}, { passive: true });
 
 // Update every minute
 setInterval(() => {
