@@ -68,6 +68,7 @@ candidate_slots AS (
         MIN(valid_from) as valid_from,
         MAX(valid_to) as valid_to,
         AVG(value) as value,
+        MIN(value) as min_value,
         (strftime('%s', MAX(valid_to)) - strftime('%s', MIN(valid_from))) / 3600.0 as duration_hours
     FROM grouped_slots
     GROUP BY group_id
@@ -77,7 +78,8 @@ SELECT
     valid_from,
     valid_to,
     duration_hours,
-    value
+    printf('%.2f', value) as value,
+    printf('%.2f', min_value) as min_value
 FROM candidate_slots
 -- prioritise longer, cheaper slots
 -- but don't mess up if the value is negative.

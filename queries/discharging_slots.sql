@@ -53,8 +53,8 @@ SELECT
     valid_from,
     valid_to,
     duration_hours,
-    value,
-    value - (SELECT MAX(value) FROM charging_slots) as profit
+    printf('%0.2f', value) as value,
+    printf('%0.2f', value - (SELECT MAX(value) FROM charging_slots)) as profit
 FROM candidate_slots
 ORDER BY value DESC;
 
