@@ -2,11 +2,15 @@ body {
     font-family: sans-serif;
     margin: 20px;
     background: #f9f9f9;
+    overflow: hidden;
+    /* Prevent body scrolling */
+    height: calc(100vh - 40px);
 }
 
 #chart {
     position: relative;
-    min-height: 400px;
+    height: 100%;
+    max-height: calc(100vh - 40px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -17,13 +21,53 @@ body {
     /* Prevent browser handling of gestures */
     -webkit-user-select: none;
     user-select: none;
+    overflow: hidden;
+    /* Prevent chart overflow */
+}
+
+/* Allow touch events to pass through SVG elements to the chart container */
+#plot {
+    overflow: hidden;
+}
+
+#plot svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* Disable pointer events on rect, path, line elements that make up the bars/lines */
+#plot svg rect,
+#plot svg path,
+#plot svg line {
+    pointer-events: none;
 }
 
 @media (max-width: 600px) {
+    body {
+        margin: 10px;
+        height: calc(100vh - 20px);
+    }
+
     #chart {
         flex-direction: column;
         align-items: stretch;
         padding: 10px;
+        max-height: calc(100vh - 20px);
+    }
+
+    #plot {
+        flex: 1;
+        min-height: 0;
+        /* Allow flex shrinking */
+
+
+        pointer-events: none;
+        touch-action: none;
+    }
+
+    #plot svg {
+        pointer-events: none;
+        touch-action: none;
     }
 }
 
