@@ -31,7 +31,7 @@ def main():
             account = args.account_id
             interval_start = data['interval_start']
             interval_end = data['interval_end']
-            consumption = data['consumption']
+            generation = data['consumption'] # Consumption is generation for export
 
             if interval and interval_start <= interval:
                 continue
@@ -45,9 +45,12 @@ def main():
                             account,
                             interval_start,
                             interval_end,
-                            consumption)
-                        VALUES(?, ?, ?, ?)''',
-                    (account, interval_start, interval_end, consumption))
+                            generation)
+                        VALUES(?, ?, ?, ?)
+                        ON CONFLICT(account, interval_start)
+                        DO UPDATE SET generation=excluded.generation
+                    ''',
+                    (account, interval_start, interval_end, generation))
                 print('OK')
             except sqlite3.IntegrityError as ie:
                 print('Integrity Error')
@@ -83,13 +86,14 @@ def last_interval(connection):
         result = connection.execute('''
             SELECT interval_start
             FROM consumption
-            WHERE consumption IS NOT NULL
+            WHERE generation is not NULL
             ORDER BY interval_start DESC
             LIMIT 1;
         ''')
         last_interval = result.fetchone()
         if last_interval:
             return last_interval[0]
+
         return None
 
 
