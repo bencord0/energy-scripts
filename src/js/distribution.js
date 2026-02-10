@@ -205,14 +205,6 @@ function render() {
                 y1: "standing_charge",
                 y2: "cost_with_standing_charge",
                 fill: "rate_end",
-                tip: true,
-                title: d => [
-                    `Rate: ${d.rate_start} - ${d.rate_end} p/kWh`,
-                    `Usage: ${d.consumption.toFixed(3)} kWh`,
-                    `Usage cost: ${formatCost(d.cost)}`,
-                    `Standing Charge: ${formatCost(d.standing_charge)}`,
-                    `Total: ${formatCost(d.cost_with_standing_charge)}`,
-                ].join("\n"),
             }),
             // Export bars go below the x-axis
             Plot.rectY(exportBins, {
@@ -220,12 +212,6 @@ function render() {
                 x2: "rate_end",
                 y: d => -d.sale,
                 fill: "rate_end",
-                tip: true,
-                title: d => [
-                    `Rate: ${d.rate_start} - ${d.rate_end} p/kWh`,
-                    `Export: ${d.generation.toFixed(3)} kWh`,
-                    `Export sale: ${formatCost(d.sale)}`,
-                ].join("\n"),
             }),
             Plot.axisY({
                 anchor: "left",
@@ -238,28 +224,39 @@ function render() {
             Plot.ruleX(importThresholds, {
                 x: "value",
                 y1: 0,
-                y2: maxY,
+                y2: maxY * 0.8,
                 stroke: "color",
                 strokeWidth: 1,
                 strokeDasharray: "4,4",
-                tip: true,
-                title: d => [
-                    d.name,
-                    `Rate: ${formatCost(d.value)}`,
-                ].join("\n"),
             }),
-            Plot.ruleX(exportThresholds, {
+            Plot.text(importThresholds, {
                 x: "value",
-                y: minY,
-                stroke: "color",
-                strokeWidth: 1,
-                strokeDasharray: "4,4",
-                tip: true,
-                title: d => [
-                    d.name,
-                    `Rate: ${formatCost(d.value)}`,
-                ].join("\n"),
+                y: maxY * 1,
+                text: d => `${d.name} (${d.value}p)`,
+                fill: "color",
+                rotate: -90,
+                dy: -4,
+                textAnchor: "end",
+                fontSize: 6,
             }),
+            //Plot.ruleX(exportThresholds, {
+            //    x: "value",
+            //    y1: minY * 0.5,
+            //    y2: 0,
+            //    stroke: "color",
+            //    strokeWidth: 1,
+            //    strokeDasharray: "4,4",
+            //}),
+            //Plot.text(exportThresholds, {
+            //    x: "value",
+            //    y: minY,
+            //    text: d => `${d.name} (${d.value}p)`,
+            //    fill: "color",
+            //    rotate: -90,
+            //    dy: -4,
+            //    textAnchor: "start",
+            //    fontSize: 6,
+            //}),
         ],
         marginRight: 80, // space for iso labels
         marginLeft: 60,

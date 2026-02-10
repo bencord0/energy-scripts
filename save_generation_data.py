@@ -37,7 +37,7 @@ def main():
                 continue
             new_data = True
 
-            print(f'INSERT consumption for {account} at {interval_start}...', end='')
+            print(f'INSERT generation for {account} at {interval_start}...', end='')
             try:
                 connection.execute(
                     '''INSERT INTO
