@@ -348,7 +348,7 @@ function render() {
     // Calculate effective prices (averages that account for consumption)
     let effectivePrice = usageCost / totalConsumption;
     if (!Number.isFinite(effectivePrice)) effectivePrice = 0;
-    let effectiveSalePrice = totalExported / totalSale;
+    let effectiveSalePrice = totalSale / totalExported;
     if (!Number.isFinite(effectiveSalePrice)) effectiveSalePrice = 0;
 
 
