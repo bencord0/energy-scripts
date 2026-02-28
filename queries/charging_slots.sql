@@ -7,7 +7,7 @@
 -- 1.0 does not remove any slots, so don't go below that.
 -- 1.5 gives us longer candidates
 -- 2.0 to 4.0 gives us cheaper candidates, but smaller time windows
-.param set $GRANULARITY 1.8
+.param set $GRANULARITY 1.5
 
 -- Only inspect future time slots
 .param set $FROM_DATE strftime('%Y-%m-%dT%H:%M')
@@ -100,4 +100,8 @@ SELECT 'Agile Octopus Charging Slots
 ';
 
 .mode table
-SELECT * from charging_slots;
+SELECT * from charging_slots
+    -- Comment this to order by value
+    -- Uncomment to order by time
+    ORDER BY valid_from
+;
