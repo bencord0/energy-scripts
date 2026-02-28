@@ -1,6 +1,19 @@
+import { importThresholds } from './thresholds.js';
+
+const thresholds = importThresholds.reduce((acc, tariff) => {
+    acc[tariff.name] = tariff;
+    return acc;
+}, {});
+
 const priceColors = {
     type: "threshold",
-    domain: [0, 7, 14, 26, 31],
+    domain: [
+        0,
+        thresholds['Intelligent Octopus Go'].value,
+        thresholds['Flexible Octopus Night'].value,
+        thresholds['Intelligent Octopus Flux'].value,
+        thresholds['Intelligent Octopus Go Day'].value,
+    ],
     range: [
         "#00338a", // < 0: Negative energy prices!
         "#0077be", // 0-7: Less than Intelligent Octopus Off-Peak

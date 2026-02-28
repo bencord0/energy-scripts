@@ -2,13 +2,13 @@
 export const importThresholds = [
     {
         name: "Intelligent Octopus Go",
-        value: 7,
+        value: 7.5,
         color: "#0077be",
     },
 
     {
         name: "Octopus Go",
-        value: 8.5,
+        value: 9,
         color: "#0077be",
     },
 
@@ -21,6 +21,12 @@ export const importThresholds = [
     {
         name: "Cosy Octopus",
         value: 14.05,
+        color: "#52be80",
+    },
+
+    {
+        name: "Flexible Octopus Night",
+        value: 14.64,
         color: "#52be80",
     },
 
@@ -50,13 +56,13 @@ export const importThresholds = [
 
     {
         name: "Intelligent Octopus Go Day",
-        value: 29.2,
+        value: 32.2,
         color: "#e74c3c",
     },
 
     {
         name: "Octopus Go Day",
-        value: 29.2,
+        value: 32.2,
         color: "#e74c3c",
     },
 
@@ -69,6 +75,12 @@ export const importThresholds = [
     {
         name: "Intelligent Octopus Flux Peak",
         value: 32.17,
+        color: "#e74c3c",
+    },
+
+    {
+        name: "Flexible Octopus Day",
+        value: 35.19,
         color: "#e74c3c",
     },
 
