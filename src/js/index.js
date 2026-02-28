@@ -113,6 +113,19 @@ function render() {
         };
     });
 
+    // Compute dynamic Y-axis domain: always show at least 10 kWh / £1, but expand if data exceeds it
+    const dataMaxY = Math.max(
+        ...data.map(d => d.consumption || 0),
+        ...usageRows.map(d => d.y2 || 0),
+        ...data.map(d => (d.rate || 0) / scaleFactor),
+    );
+    const dataMinY = Math.max(
+        ...data.map(d => d.generation || 0),
+        ...data.map(d => (d.exportRate || 0) / scaleFactor),
+    );
+    const yMax = Math.max(maxKWh, dataMaxY * 1.05); // 5% headroom
+    const yMin = Math.max(0, dataMinY * 1.05);
+
     function formatTick(d) {
         const isMidnight = d.getHours() === 0 && d.getMinutes() === 0;
         if (isMidnight) {
@@ -155,7 +168,11 @@ function render() {
             ticks: tickCount,
             domain: [startDate, endDate],
         },
-        y: { grid: true, zero: true },
+        y: {
+            grid: true,
+            zero: true,
+            domain: [-yMin, yMax],
+        },
         color: priceColors,
         marks: [
             // Standing charge overlay
