@@ -2,6 +2,7 @@ import sqlite3
 import json
 import os
 from argparse import ArgumentParser
+from datetime import datetime, UTC
 
 parser = ArgumentParser()
 parser.add_argument('--account-id', required=True)
@@ -29,8 +30,8 @@ def main():
     with connection:
         for data in results:
             account = args.account_id
-            interval_start = data['interval_start']
-            interval_end = data['interval_end']
+            interval_start = str2dt(data['interval_start'])
+            interval_end = str2dt(data['interval_end'])
             generation = data['consumption'] # Consumption is generation for export
 
             if interval and interval_start <= interval:
@@ -50,7 +51,7 @@ def main():
                         ON CONFLICT(account, interval_start)
                         DO UPDATE SET generation=excluded.generation
                     ''',
-                    (account, interval_start, interval_end, generation))
+                    (account, dt2str(interval_start), dt2str(interval_end), generation))
                 print('OK')
             except sqlite3.IntegrityError as ie:
                 print('Integrity Error')
@@ -92,9 +93,17 @@ def last_interval(connection):
         ''')
         last_interval = result.fetchone()
         if last_interval:
-            return last_interval[0]
+            return str2dt(last_interval[0])
 
         return None
+
+
+def str2dt(dt: str) -> datetime:
+    return datetime.fromisoformat(dt).astimezone(UTC)
+
+
+def dt2str(dt: datetime) -> str:
+    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 if __name__ == '__main__':
