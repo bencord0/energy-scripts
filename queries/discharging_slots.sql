@@ -14,6 +14,7 @@ WITH export_slots AS (
         AND r.valid_from > $FROM_DATE
         AND r.value > (SELECT COALESCE(MAX(value), 0) FROM charging_slots)
         AND r.valid_from NOT IN (SELECT valid_from FROM import_slots)
+        AND r.valid_from > (SELECT MAX(valid_to) FROM charging_slots)
 ),
 
 -- Find gaps between the slots, and mark the discontinuities
