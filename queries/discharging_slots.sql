@@ -1,6 +1,12 @@
 .read queries/charging_slots.sql
 
 .param set $EXPORT_TARIFF 'AGILE-OUTGOING-19-05-13'
+-- The current price of octopus outgoing fixed
+-- Set to 0 to disregard this filter
+-- A higher number reduces the number of discharge slots selected
+-- but can be used to game a vanity metric to demonstrate that agile outgoing
+-- offers better prices than the fixed variant.
+.param set $FIXED_EXPORT_BARRIER 12
 
 CREATE TEMPORARY TABLE discharging_slots AS
 WITH export_slots AS (
@@ -13,6 +19,7 @@ WITH export_slots AS (
         r.product_code = $EXPORT_TARIFF
         AND r.valid_from > $FROM_DATE
         AND r.value > (SELECT COALESCE(MAX(value), 0) FROM charging_slots)
+        AND r.value > $FIXED_EXPORT_BARRIER
         AND r.valid_from NOT IN (SELECT valid_from FROM import_slots)
         AND r.valid_from > (SELECT MAX(valid_to) FROM charging_slots)
 ),
