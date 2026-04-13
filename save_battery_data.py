@@ -69,7 +69,7 @@ def main():
     migrate_db(connection)
 
     with connection:
-        start = str2dt(data[0]["time"]).replace(minute=0, second=0, tzinfo=None)
+        start = str2dt(data[0]["time"]).replace(minute=0, second=0).astimezone(UTC)
 
         starttime = dt2str(start)
         end = start + timedelta(minutes=30)
