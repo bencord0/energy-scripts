@@ -4,9 +4,16 @@ import os
 import requests
 import sqlite3
 from argparse import ArgumentParser
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta
 from requests.auth import AuthBase
 from pathlib import Path
+
+try:
+    # Added in 3.11
+    from datetime import UTC
+except ImportError:
+    from datetime import timezone
+    UTC = timezone.utc
 
 parser = ArgumentParser()
 parser.add_argument("--inverter-id", required=True)
