@@ -1,6 +1,6 @@
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-const DB_VERSION = '2026-02-08T23:40:51Z';
+const DB_VERSION = '2026-04-13T06:18:42Z';
 
 let sqlite3Promise = null;
 async function getSqlite3() {
@@ -113,10 +113,13 @@ export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
             SUM(c.generation),
             AVG(r.value),
             SUM(c.consumption * r.value),
-            SUM(c.generation * r.value)
+            SUM(c.generation * r.value),
+            SUM(b.charge),
+            SUM(b.discharge)
         FROM tariff_rates as r
         JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
         LEFT JOIN consumption as c ON r.valid_from = c.interval_start
+        LEFT JOIN charge as b ON r.valid_from = b.start
         WHERE r.valid_from >= $start AND r.valid_from < $end
           AND p.type = $type
         GROUP BY
@@ -146,6 +149,8 @@ export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
                 rate: row[5],
                 cost: row[6],
                 sale: row[7],
+                charge: row[8],
+                discharge: row[9],
             });
         },
     });

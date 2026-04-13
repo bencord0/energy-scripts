@@ -90,6 +90,7 @@ function render() {
     // Precompute standing charge and usage stacked above the standing charge bar
     // Only include rows for slots where we have consumption data
     const slotsWithConsumption = data.filter(d => d.consumption !== null && d.consumption !== undefined);
+    const slotsWithGeneration = data.filter(d => d.generation !== null && d.generation !== undefined);
 
     const standingChargeRows = slotsWithConsumption.map(d => {
         const standingChargePence = standingChargeForDate(d.timestamp) / slotsPerDay;
@@ -209,7 +210,7 @@ function render() {
             // Exported Usage
             Plot.rectY(data, {
                 x: 'timestamp',
-                y: d => (-d.sale || 0) / scaleFactor,
+                y: d => -(d.exportSale || 0) / scaleFactor,
                 interval: interval,
                 fill: 'exportRate',
                 inset: 0,
@@ -253,6 +254,22 @@ function render() {
                 strokeWidth: 2,
                 curve: "step-after",
             }),
+            // Battery Charge
+            Plot.lineY(data, {
+                x: 'timestamp',
+                y: 'charge',
+                stroke: "rgba(0, 240, 45, 0.8)",
+                strokeWidth: 2,
+                curve: "step-after",
+            }),
+            // Battery Discharge
+            Plot.lineY(data, {
+                x: 'timestamp',
+                y: d => -d.discharge,
+                stroke: "rgba(0, 240, 45, 0.8)",
+                strokeWidth: 2,
+                curve: "step-after",
+            }),
             // Baseline at zero to anchor bars
             Plot.ruleY([0]),
             Plot.axisY({ anchor: "left", label: "Used Energy (kWh)" }),
@@ -271,9 +288,9 @@ function render() {
             Plot.tip(data, Plot.pointerX({
                 x: "timestamp",
                 y: d => {
-                    const consumption = d.consumption || 0;
-                    const generation = d.generation || 0;
-                    return consumption - generation;
+                    const up = Math.max(d.consumption || 0, d.charge || 0);
+                    const down = Math.max(d.generation || 0, d.discharge || 0);
+                    return up - down;
                 },
                 title: d => {
                     let standingChargeFraction = 0;
@@ -286,11 +303,13 @@ function render() {
                         `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
                         `Import Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
                         `Import Cost: ${formatCost((d.cost || 0))}`,
+                        `Battery Charge: ${(d.charge || 0).toFixed(2)} kWh`,
+                        `Battery Disharge: ${(d.discharge || 0).toFixed(2)} kWh`,
                         `Export: ${(d.generation || 0).toFixed(3)} kWh`,
                         `Export Price: ${(d.exportRate || 0).toFixed(2)} p/kWh`,
                         `Export Sale: ${formatCost((d.sale || 0))}`,
                         `Standing Charge: ${standingChargeFraction.toFixed(2)} p`,
-                        `Total Cost: ${formatCost(totalSlotCost)}`
+                        `Total Cost: ${formatCost(totalSlotCost)}`,
                     ].join("\n");
                 }
             })),
