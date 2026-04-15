@@ -1,6 +1,6 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getConsumption, getStandingCharge } from '/js/db.js';
+import { initDatabase, getConsumption, getStandingCharge, getAgilePredictions } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
@@ -54,6 +54,7 @@ function render() {
     const { data: importData, timeWindow } = getConsumption(db, startStr, endStr, 'IMPORT');
     const { data: exportData } = getConsumption(db, startStr, endStr, 'EXPORT');
     const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
+    const pricePredictions = getAgilePredictions(db, startStr, endStr, 'A')
 
     const exportInfoMap = new Map(exportData.map(d => [d.timestamp.getTime(), { rate: d.rate, sale: d.sale }]));
     const data = importData.map(d => {
@@ -268,6 +269,14 @@ function render() {
                 y: d => -d.discharge,
                 stroke: "rgba(0, 240, 45, 0.8)",
                 strokeWidth: 2,
+                curve: "step-after",
+            }),
+            // AgilePredict - https://agilepredict.com/api_how_to
+            Plot.lineY(pricePredictions, {
+                x: 'timestamp',
+                y: d => d.prediction / scaleFactor,
+                stroke: "rgba(50, 50, 50, 0.8)",
+                strokeWidth: 1,
                 curve: "step-after",
             }),
             // Baseline at zero to anchor bars
