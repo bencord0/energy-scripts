@@ -19,7 +19,7 @@ parser = ArgumentParser()
 parser.add_argument("--inverter-id", required=True)
 parser.add_argument("--date", required=True)
 parser.add_argument("--page")
-parser.add_argument("--page-size", default=1000)
+parser.add_argument("--page-size", default=10000)
 parser.add_argument("--force", action="store_true")
 parser.add_argument("db")
 
