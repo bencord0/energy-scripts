@@ -100,7 +100,13 @@ SELECT 'Agile Octopus Charging Slots
 ';
 
 .mode table
-SELECT * from charging_slots
+SELECT
+    SUBSTR(valid_from, 0, 17) AS start,
+    SUBSTR(valid_to, 0, 17)   AS end,
+    duration_hours            AS duration,
+    value                     AS avg,
+    min_value                 AS min
+FROM charging_slots
     -- Comment this to order by value
     -- Uncomment to order by time
     ORDER BY valid_from

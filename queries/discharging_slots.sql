@@ -71,4 +71,10 @@ SELECT 'Outgoing Agile Discharging Slots
 ';
 
 .mode table
-SELECT * from discharging_slots;
+SELECT
+    SUBSTR(valid_from, 0, 17) AS start,
+    SUBSTR(valid_to, 0, 17)   AS end,
+    duration_hours            AS duration,
+    value                     AS avg,
+    profit                    AS profit
+FROM discharging_slots;

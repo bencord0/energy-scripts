@@ -128,7 +128,6 @@ def main():
                """,
                 (inverter, starttime, endtime, charge, discharge),
              )
-            print(f"OK charge: {charge}, discharge: {discharge}")
 
             prev = datum
             start = end
