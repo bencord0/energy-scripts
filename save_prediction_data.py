@@ -38,6 +38,9 @@ def main():
     connection = connect_db(args.db)
     migrate_db(connection)
 
+    confirmed_timestamp = lastest_confirmed_slot(
+        'AGILE-24-10-01', 'E-1R-AGILE-24-10-01-A', connection)
+
     with connection:
         for slot in prices:
             timestamp = str2dt(slot["date_time"])
@@ -49,6 +52,17 @@ def main():
                    VALUES(?, ?, ?)
                 """,
                 (region, dt2str(timestamp), prediction),
+            )
+
+            connection.execute(
+                """DELETE FROM agile_predictions
+                   WHERE region = :region
+                     AND timestamp < :timestamp
+                """,
+                {
+                    'region': region,
+                    'timestamp': confirmed_timestamp,
+                },
             )
 
 
@@ -69,6 +83,23 @@ def migrate_db(connection):
             CREATE INDEX IF NOT EXISTS agile_prediction_timestamp ON agile_predictions(timestamp);
             COMMIT;
         """)
+
+def lastest_confirmed_slot(product_code, tariff_code, connection):
+    with connection:
+        result = connection.execute('''
+            SELECT valid_from
+            FROM tariff_rates
+            WHERE product_code = :product_code
+              AND tariff_code  = :tariff_code
+            ORDER BY valid_from DESC
+            LIMIT 1;
+        ''', {
+            'product_code': product_code,
+            'tariff_code': tariff_code,
+        })
+        last_slot = result.fetchone()
+        if last_slot:
+            return last_slot[0]
 
 
 def str2dt(dt: str) -> datetime:
