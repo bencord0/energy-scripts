@@ -42,6 +42,12 @@ export const importThresholds = [
     //    color: "#e67e22",
     //},
 
+    {
+        name: "Flexible Octopus",
+        value: 24.94,
+        color: "#e67e22",
+    }
+
     //{
     //    name: "Octopus Flux Day",
     //    value: 28.64,

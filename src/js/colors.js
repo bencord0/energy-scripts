@@ -11,7 +11,8 @@ const priceColors = {
         0,
         thresholds['Intelligent Octopus Go'].value,
         thresholds['Flexible Octopus Night'].value,
-        thresholds['Intelligent Octopus Flux'].value,
+        //thresholds['Intelligent Octopus Flux'].value,
+        thresholds['Flexible Octopus'].value, // replacement while Flux is out
         thresholds['Intelligent Octopus Go Day'].value,
     ],
     range: [
