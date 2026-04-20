@@ -239,20 +239,22 @@ function render() {
                 inset: 0,
                 shapeRendering: "crispEdges",
             }),
-            // Consumption
+            // Grid Consumption
             Plot.lineY(data, {
                 x: 'timestamp',
                 y: 'consumption',
                 stroke: "rgba(0, 127, 200, 0.8)",
-                strokeWidth: 2,
+                strokeWidth: 1,
+                strokeDasharray: "5,1",
                 curve: "step-after",
             }),
-            // Generation
+            // Grid Export
             Plot.lineY(data, {
                 x: 'timestamp',
                 y: d => -d.generation,
                 stroke: "rgba(0, 127, 200, 0.8)",
-                strokeWidth: 2,
+                strokeWidth: 1,
+                strokeDasharray: "5,1",
                 curve: "step-after",
             }),
             // Battery Charge
@@ -260,7 +262,8 @@ function render() {
                 x: 'timestamp',
                 y: 'charge',
                 stroke: "rgba(0, 240, 45, 0.8)",
-                strokeWidth: 2,
+                strokeWidth: 1,
+                strokeDasharray: "5,1",
                 curve: "step-after",
             }),
             // Battery Discharge
@@ -268,7 +271,8 @@ function render() {
                 x: 'timestamp',
                 y: d => -d.discharge,
                 stroke: "rgba(0, 240, 45, 0.8)",
-                strokeWidth: 2,
+                strokeWidth: 1,
+                strokeDasharray: "5,1",
                 curve: "step-after",
             }),
             // AgilePredict - https://agilepredict.com/api_how_to
