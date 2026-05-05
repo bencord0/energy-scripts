@@ -8,16 +8,13 @@ SERIAL="..."
 
 . <(pass "octopus.energy/env")
 
-python ./consumption.py --mpan "${IMPORT_MPAN}" --serial "${SERIAL}"
-python ./consumption.py --mpan "${EXPORT_MPAN}" --serial "${SERIAL}"
-
-python ./save_consumption_data.py \
+cargo run --bin save_consumption_data -- \
     --account-id "${ACCOUNT_ID}" \
     --mpan "${IMPORT_MPAN}" \
     --serial "${SERIAL}" \
     data/power.sqlite3
 
-python ./save_generation_data.py \
+cargo run --bin save_consumption_data -- \
     --account-id "${ACCOUNT_ID}" \
     --mpan "${EXPORT_MPAN}" \
     --serial "${SERIAL}" \

@@ -1,4 +1,7 @@
 data/
-
 !data/products.json
 !data/products-AGILE-24-10-01.json
+
+
+# Added by cargo
+/target
