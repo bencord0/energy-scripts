@@ -1,6 +1,5 @@
 use chrono::{
     DateTime,
-    NaiveDate,
     Utc,
 };
 use clap::Parser;
@@ -24,9 +23,14 @@ use sqlx::{
     pool::{PoolConnection, PoolOptions},
     Row,
 };
-use power::OctopusClient;
-
-const PG_URL: &'static str = "postgres:///power";
+use power::{
+    AppState,
+    OctopusClient,
+    dates::{
+        dt2str,
+        str2dt,
+    },
+};
 
 #[derive(Parser,Debug)]
 struct Args {
@@ -43,41 +47,6 @@ struct Args {
     to: Option<String>,
 
     db: String,
-}
-
-#[derive(Debug)]
-struct AppState {
-    sqlite: SqlitePool,
-    pg: PgPool,
-}
-
-impl AppState {
-    fn connect(db: &str) -> Result<Self, Error> {
-        let sqlite = SqlitePool::connect_lazy(db)?;
-
-        let pg_opts = PoolOptions::<Postgres>::new()
-            .acquire_timeout(Duration::new(1, 0));
-        let pg = pg_opts.connect_lazy(PG_URL)?;
-
-        Ok(AppState{
-            sqlite,
-            pg,
-        })
-    }
-
-    async fn acquire_sqlite(&self) -> Result<PoolConnection<Sqlite>, Error> {
-        Ok(self.sqlite.acquire().await?)
-    }
-
-    async fn acquire_pg(&self) -> Result<PoolConnection<Postgres>, Error>
-    {
-        Ok(
-            self.pg
-                .acquire()
-                .await
-                .wrap_err("Failed to connect to postgres")?
-            )
-    }
 }
 
 #[tokio::main]
@@ -177,27 +146,4 @@ async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
         .await?;
 
     Ok(())
-}
-
-fn dt2str(dt: DateTime<Utc>) -> String {
-    dt.format("%Y-%m-%dT%H:%MZ").to_string()
-}
-
-
-fn str2dt(s: &str) -> Result<DateTime<Utc>, Error> {
-    if let Ok(dt) = DateTime::parse_from_str(&s, "%Y-%m-%dT%H:%MZ") {
-        return Ok(dt.into());
-    };
-
-    if let Ok(dt) = DateTime::parse_from_rfc3339(&s) {
-        return Ok(dt.into());
-    };
-
-    let dt: DateTime<Utc> = NaiveDate::parse_from_str(&s, "%Y-%m-%d")
-        .map(|dt| {
-            dt
-            .and_hms_opt(0, 0, 0).unwrap() // always valid, hardcoded
-            .and_utc()
-        })?;
-    Ok(dt.into())
 }
