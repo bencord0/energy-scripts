@@ -1,7 +1,5 @@
 import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
 
-const DB_VERSION = '2026-04-13T06:18:42Z';
-
 let sqlite3Promise = null;
 async function getSqlite3() {
     if (!sqlite3Promise) {
@@ -42,6 +40,8 @@ export async function getDataBuffer() {
                     callback: (row) => { dbVersion = row[0]; }
                 });
                 db.close();
+
+                let DB_VERSION = await (await fetch("/version")).text();
 
                 if (dbVersion === DB_VERSION) {
                     console.log('Using cached database (version ' + dbVersion + ')');
@@ -99,62 +99,19 @@ export function getTimeWindow(startStr, endStr) {
     }
 }
 
-export function getConsumption(db, startStr, endStr, type = 'IMPORT') {
+export async function getConsumption(db, startStr, endStr, type = 'IMPORT') {
     const timeWindow = getTimeWindow(startStr, endStr);
     const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
 
-    const sql = `
-        SELECT
-            strftime('%Y-%m-%dT00:00:00Z', r.valid_from), -- daily
-            strftime('%Y-%m-%dT%H:00:00Z', r.valid_from), -- hourly
-            r.valid_from,                                 -- half-hourly
-
-            SUM(c.consumption),
-            SUM(c.generation),
-            AVG(r.value),
-            SUM(c.consumption * r.value),
-            SUM(c.generation * r.value),
-            SUM(b.charge),
-            SUM(b.discharge)
-        FROM tariff_rates as r
-        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-        LEFT JOIN consumption as c ON r.valid_from = c.interval_start
-        LEFT JOIN charge as b ON r.valid_from = b.start
-        WHERE r.valid_from >= $start AND r.valid_from < $end
-          AND p.type = $type
-        GROUP BY
-          CASE $window
-            WHEN '1d' THEN date(r.valid_from)
-            WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', r.valid_from)
-            ELSE r.valid_from
-          END
-        ORDER BY r.valid_from ASC
-    `;
-
-    const data = [];
-
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-            $type: type,
-            $window: timeWindow
-        },
-        callback: (row) => {
-            data.push({
-                timestamp: new Date(row[timeColIdx]),
-                consumption: row[3],
-                generation: row[4],
-                rate: row[5],
-                cost: row[6],
-                sale: row[7],
-                charge: row[8],
-                discharge: row[9],
-            });
-        },
+    const query = new URLSearchParams({
+        "start": startStr,
+        "end": endStr,
+        "type": type,
+        "window": timeWindow,
     });
 
+    let response = await fetch("/api/consumption?" + query.toString());
+    let data = await response.json();
     return { data, timeWindow };
 }
 

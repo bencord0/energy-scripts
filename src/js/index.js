@@ -42,7 +42,7 @@ function updateUrl(startStr, endStr, timeWindow) {
     }, 500);
 }
 
-function render() {
+async function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
@@ -51,14 +51,18 @@ function render() {
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    const { data: importData, timeWindow } = getConsumption(db, startStr, endStr, 'IMPORT');
-    const { data: exportData } = getConsumption(db, startStr, endStr, 'EXPORT');
+    const { data: importData, timeWindow } = await getConsumption(db, startStr, endStr, 'IMPORT');
+    const { data: exportData } = await getConsumption(db, startStr, endStr, 'EXPORT');
     const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
     const pricePredictions = getAgilePredictions(db, startStr, endStr, 'A')
 
-    const exportInfoMap = new Map(exportData.map(d => [d.timestamp.getTime(), { rate: d.rate, sale: d.sale }]));
+    const exportInfoMap = new Map(exportData.map(d => {
+        const timestamp = new Date(d.timestamp);
+        return [timestamp.getTime(), { rate: d.rate, sale: d.sale }];
+    }));
     const data = importData.map(d => {
-        const exportInfo = exportInfoMap.get(d.timestamp.getTime()) || { rate: 0, sale: 0 };
+        const timestamp = new Date(d.timestamp);
+        const exportInfo = exportInfoMap.get(timestamp.getTime()) || { rate: 0, sale: 0 };
         return {
             ...d,
             exportRate: exportInfo.rate,
@@ -73,7 +77,8 @@ function render() {
         "30m": d3.timeMinute.every(30),
     }[timeWindow];
 
-    function dayKeyUTC(date) {
+    function dayKeyUTC(d) {
+        let date = new Date(d);
         return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
     }
 
@@ -94,9 +99,10 @@ function render() {
     const slotsWithGeneration = data.filter(d => d.generation !== null && d.generation !== undefined);
 
     const standingChargeRows = slotsWithConsumption.map(d => {
-        const standingChargePence = standingChargeForDate(d.timestamp) / slotsPerDay;
+        const timestamp = new Date(d.timestamp);
+        const standingChargePence = standingChargeForDate(timestamp) / slotsPerDay;
         return {
-            timestamp: d.timestamp,
+            timestamp,
             rate: d.rate,
             y2: (standingChargePence) / scaleFactor,
             hasUsage: (d.consumption || 0) > 0,
@@ -104,11 +110,12 @@ function render() {
     });
 
     const usageRows = slotsWithConsumption.map(d => {
-        const standingChargePence = standingChargeForDate(d.timestamp) / slotsPerDay;
+        const timestamp = new Date(d.timestamp);
+        const standingChargePence = standingChargeForDate(timestamp) / slotsPerDay;
         const standingChargeScaled = standingChargePence / scaleFactor;
         const usageScaled = (d.cost || 0) / scaleFactor;
         return {
-            timestamp: d.timestamp,
+            timestamp,
             rate: d.rate,
             y1: standingChargeScaled,
             y2: standingChargeScaled + usageScaled,
@@ -306,13 +313,14 @@ function render() {
                     return up - down;
                 },
                 title: d => {
+                    const timestamp = new Date(d.timestamp);
                     let standingChargeFraction = 0;
                     if (d.consumption !== null && d.consumption !== undefined) {
-                        standingChargeFraction = standingChargeForDate(d.timestamp) / slotsPerDay;
+                        standingChargeFraction = standingChargeForDate(timestamp) / slotsPerDay;
                     }
                     const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
                     return [
-                        `Time: ${d3.timeFormat("%H:%M")(d.timestamp)}`,
+                        `Time: ${d3.timeFormat("%H:%M")(timestamp)}`,
                         `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
                         `Import Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
                         `Import Cost: ${formatCost((d.cost || 0))}`,
@@ -349,7 +357,7 @@ function render() {
 
     // Standing charge: sum apportioned to each visible slot
     // Group slots by day to be careful about fractional day floating point arithmetic
-    const standingCharge = Array.from(d3.group(slotsWithConsumption, d => dayKeyUTC(d.timestamp)))
+    const standingCharge = Array.from(d3.group(slotsWithConsumption, d => dayKeyUTC(new Date(d.timestamp))))
         .reduce((sum, [dayKey, slots]) => {
             const dailyStandingCharge = standingChargeMap.get(dayKey) || 0;
             return sum + (dailyStandingCharge * slots.length / slotsPerDay);
@@ -366,7 +374,9 @@ function render() {
     // Calculate hours covered (based on actual data points)
     let period = 0;
     if (data.length > 0) {
-        period = intervalHours + (data[data.length - 1].timestamp - data[0].timestamp) / (1000 * 60 * 60);
+        const timeFrom = new Date(data[0].timestamp);
+        const timeTo = new Date(data[data.length - 1].timestamp);
+        period = intervalHours + (timeTo - timeFrom) / (1000 * 60 * 60);
     }
 
     // Calculate total consumption
@@ -450,7 +460,7 @@ function render() {
 }
 
 // Initial render
-render();
+await render();
 
 let pendingUpdate = false;
 window.addEventListener('wheel', (e) => {

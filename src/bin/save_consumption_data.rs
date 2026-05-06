@@ -3,24 +3,17 @@ use chrono::{
     Utc,
 };
 use clap::Parser;
-use eyre::{Error, Context};
+use eyre::Error;
 use std::{
     env,
     fs,
     path::PathBuf,
-    time::Duration,
 };
 use sqlx::{
     sqlite::{
         Sqlite,
         SqliteConnection,
-        SqlitePool,
     },
-    postgres::{
-        Postgres,
-        PgPool,
-    },
-    pool::{PoolConnection, PoolOptions},
     Row,
 };
 use power::{
