@@ -1,3 +1,4 @@
+use clap::Parser;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -20,8 +21,19 @@ use power::{
 
 const SQLITE_URL: &'static str = "sqlite:data/power.sqlite3";
 
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(long)]
+    tcp: Option<String>,
+
+    #[arg(long)]
+    unix: Option<String>,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    let args = Args::parse();
+
     // basic logging, stdout
     tracing_subscriber::fmt::init();
 
@@ -41,9 +53,28 @@ async fn main() -> Result<(), Error> {
         .with_state(Arc::new(state))
         ;
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // JoinSet cancels all tasks when dropped
+    let mut set = tokio::task::JoinSet::new();
 
+    if let Some(tcp) = args.tcp {
+        let tcplistener = tokio::net::TcpListener::bind(tcp).await?;
+        log::info!("Listening on {tcplistener:?}");
+        set.spawn(axum::serve(tcplistener, app.clone()).into_future());
+    }
+
+    if let Some(unix) = args.unix {
+        let _ = tokio::fs::remove_file(&unix).await?;
+        let unixlistener = tokio::net::UnixListener::bind(&unix)?;
+        log::info!("Listening on {unixlistener:?}");
+        set.spawn(axum::serve(unixlistener, app).into_future());
+    }
+
+    while let Some(res) = set.join_next().await {
+        // propagate errors
+        let _ = res.unwrap();
+    }
+
+    log::info!("Exiting");
     Ok(())
 }
 
