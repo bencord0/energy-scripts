@@ -1,13 +1,9 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getPriceDistribution, getStandingCharge, getTimeWindow } from '/js/db.js';
+import { getPriceDistribution, getStandingCharge, getTimeWindow } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { importThresholds, exportThresholds } from '/js/thresholds.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
-
-const { sqlite3, db } = await initDatabase();
-window.sqlite3 = sqlite3; // for debugging
-window.db = db; // for debugging
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -39,6 +35,7 @@ async function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
+    // TODO: Send requests in parallel
     const { data, timeWindow } = await getPriceDistribution(db, startStr, endStr);
     const slotsPerDay = 48;
 

@@ -1,14 +1,10 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getConsumptionByTimeOfDay, getDataLimits } from '/js/db.js';
+import { getConsumptionByTimeOfDay, getDataLimits } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
-const { sqlite3, db } = await initDatabase();
-window.sqlite3 = sqlite3; // for debugging
-window.db = db; // for debugging
-
-const { earliestDate, latestDate } = await getDataLimits(db);
+const { earliestDate, latestDate } = await getDataLimits();
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -41,7 +37,7 @@ async function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    let { data, timeWindow } = await getConsumptionByTimeOfDay(db, startStr, endStr);
+    let { data, timeWindow } = await getConsumptionByTimeOfDay(startStr, endStr);
     data = data.map((d) => {
         let [hours, minutes] = d.time_of_day.split(':').map(Number);
         let start = new Date();

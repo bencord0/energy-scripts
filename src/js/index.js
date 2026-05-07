@@ -1,12 +1,8 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getConsumption, getStandingCharge, getAgilePredictions } from '/js/db.js';
+import { getConsumption, getStandingCharge, getAgilePredictions } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
-
-const { sqlite3, db } = await initDatabase();
-window.sqlite3 = sqlite3; // for debugging
-window.db = db; // for debugging
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -51,10 +47,11 @@ async function render() {
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    const { data: importData, timeWindow } = await getConsumption(db, startStr, endStr, 'IMPORT');
-    const { data: exportData } = await getConsumption(db, startStr, endStr, 'EXPORT');
-    const standingCharges = await getStandingCharge(db, startStr, endStr, 'IMPORT');
-    const pricePredictions = await getAgilePredictions(db, startStr, endStr, 'A')
+    // TODO: Parallel
+    const { data: importData, timeWindow } = await getConsumption(startStr, endStr, 'IMPORT');
+    const { data: exportData } = await getConsumption(startStr, endStr, 'EXPORT');
+    const standingCharges = await getStandingCharge(startStr, endStr, 'IMPORT');
+    const pricePredictions = await getAgilePredictions(startStr, endStr, 'A')
 
     const exportInfoMap = new Map(exportData.map(d => {
         const timestamp = new Date(d.timestamp);

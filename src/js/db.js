@@ -1,90 +1,3 @@
-import { default as sqlite3WasmInit } from '/js/sqlite-wasm-3510100/jswasm/sqlite3.mjs';
-
-let sqlite3Promise = null;
-async function getSqlite3() {
-    if (!sqlite3Promise) {
-        sqlite3Promise = sqlite3WasmInit();
-    }
-    return sqlite3Promise;
-}
-
-export async function getDataBuffer() {
-    const cacheName = 'octopus-data-v1';
-    const url = '/data/power.sqlite3';
-
-    // Speed up first page load if we have visited the site before
-    if ('caches' in window) {
-        const cache = await caches.open(cacheName);
-        const cachedResponse = await cache.match(url);
-
-        if (cachedResponse) {
-            const buffer = await cachedResponse.arrayBuffer();
-
-            // Check version
-            try {
-                const sqlite3 = await getSqlite3();
-                const db = new sqlite3.oo1.DB();
-                const rc = sqlite3.capi.sqlite3_deserialize(
-                    db.pointer,
-                    'main',
-                    sqlite3.wasm.allocFromTypedArray(buffer),
-                    buffer.byteLength,
-                    buffer.byteLength,
-                    sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
-                );
-                db.checkRc(rc);
-
-                let dbVersion = null;
-                db.exec({
-                    sql: "SELECT value FROM versioning WHERE key = 'version'",
-                    callback: (row) => { dbVersion = row[0]; }
-                });
-                db.close();
-
-                let DB_VERSION = await (await fetch("/version")).text();
-
-                if (dbVersion === DB_VERSION) {
-                    console.log('Using cached database (version ' + dbVersion + ')');
-                    return buffer;
-                } else {
-                    console.warn('Database version mismatch. Expected: ' + DB_VERSION + ', Found: ' + dbVersion);
-                }
-            } catch (e) {
-                console.warn('Could not check database version (might be old schema):', e);
-            }
-        }
-
-        console.log('Fetching database and caching...');
-        const response = await fetch(url);
-        await cache.put(url, response.clone());
-        return await response.arrayBuffer();
-    }
-
-    return await fetch(url).then(res => res.arrayBuffer());
-}
-
-export async function initDatabase() {
-    const [sqlite3, dataBuffer] = await Promise.all([
-        getSqlite3(),
-        getDataBuffer(),
-    ]);
-
-    //const db = new sqlite3.oo1.DB();
-    const db = new sqlite3.oo1.JsStorageDb('local');
-
-    const rc = sqlite3.capi.sqlite3_deserialize(
-        db.pointer,
-        'main',
-        sqlite3.wasm.allocFromTypedArray(dataBuffer),
-        dataBuffer.byteLength,
-        dataBuffer.byteLength,
-        sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE,
-    );
-    db.checkRc(rc);
-
-    return { sqlite3, db };
-}
-
 export function getTimeWindow(startStr, endStr) {
     const startDate = new Date(startStr);
     const endDate = new Date(endStr);
@@ -99,7 +12,7 @@ export function getTimeWindow(startStr, endStr) {
     }
 }
 
-export async function getConsumption(db, startStr, endStr, type = 'IMPORT') {
+export async function getConsumption(startStr, endStr, type = 'IMPORT') {
     const timeWindow = getTimeWindow(startStr, endStr);
     const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
 
@@ -115,7 +28,7 @@ export async function getConsumption(db, startStr, endStr, type = 'IMPORT') {
     return { data, timeWindow };
 }
 
-export async function getPriceDistribution(db, startStr, endStr) {
+export async function getPriceDistribution(startStr, endStr) {
     const query = new URLSearchParams({
         "start": startStr,
         "end": endStr,
@@ -128,7 +41,7 @@ export async function getPriceDistribution(db, startStr, endStr) {
     return { data, timeWindow };
 }
 
-export async function getConsumptionByTimeOfDay(db, startStr, endStr) {
+export async function getConsumptionByTimeOfDay(startStr, endStr) {
     const query = new URLSearchParams({
         "start": startStr,
         "end": endStr,
@@ -141,7 +54,7 @@ export async function getConsumptionByTimeOfDay(db, startStr, endStr) {
     return { data, timeWindow };
 }
 
-export async function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
+export async function getStandingCharge(startStr, endStr, type = 'IMPORT') {
     const query = new URLSearchParams({
         "start": startStr,
         "end": endStr,
@@ -154,7 +67,7 @@ export async function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
     return data;
 }
 
-export async function getAgilePredictions(db, startStr, endStr, region) {
+export async function getAgilePredictions(startStr, endStr, region) {
     const timeWindow = getTimeWindow(startStr, endStr);
 
     const query = new URLSearchParams({
@@ -170,7 +83,7 @@ export async function getAgilePredictions(db, startStr, endStr, region) {
     return data;
 }
 
-export async function getDataLimits(db) {
+export async function getDataLimits() {
     let response = await fetch("/api/data-limits");
     let data = await response.json();
 
