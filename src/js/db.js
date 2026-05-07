@@ -170,26 +170,9 @@ export async function getAgilePredictions(db, startStr, endStr, region) {
     return data;
 }
 
-export function getDataLimits(db) {
-    /**
-     * Returns the earliest and latest timestamps from consumption data.
-     * Returns null for both if no data exists.
-     */
-    const sql = `
-        SELECT MIN(interval_start), MAX(interval_start)
-        FROM consumption
-    `;
+export async function getDataLimits(db) {
+    let response = await fetch("/api/data-limits");
+    let data = await response.json();
 
-    let earliestDate = null;
-    let latestDate = null;
-
-    db.exec({
-        sql: sql,
-        callback: (row) => {
-            if (row[0]) earliestDate = new Date(row[0]);
-            if (row[1]) latestDate = new Date(row[1]);
-        }
-    });
-
-    return { earliestDate, latestDate };
+    return data;
 }

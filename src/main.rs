@@ -3,8 +3,11 @@ use axum::{
     http::StatusCode,
     routing::get,
     Router,
+    Json,
 };
 use eyre::{WrapErr, Error};
+use sqlx::Row;
+use serde::Serialize;
 use std::sync::Arc;
 use tower_http::{
     services::ServeDir,
@@ -32,6 +35,7 @@ async fn main() -> Result<(), Error> {
         .route("/api/price-distribution", get(api::price_distribution))
         .route("/api/standing-charge", get(api::standing_charge))
         .route("/api/agile-prediction", get(api::agile_prediction))
+        .route("/api/data-limits", get(data_limits))
         .fallback_service(ServeDir::new("./src"))
         .layer(TowerTraceLayer::new_for_http())
         .with_state(Arc::new(state))
@@ -76,4 +80,41 @@ async fn version(State(app): State<Arc<AppState>>)
         })?;
 
     Ok(version.value)
+}
+
+#[derive(Serialize, Debug)]
+struct DataLimit {
+    earliestDate: String,
+    latestDate: String,
+}
+
+async fn data_limits(State(app): State<Arc<AppState>>)
+    -> Result<Json<DataLimit>, StatusCode>
+{
+    let mut conn = app
+        .acquire_sqlite()
+        .await
+        .wrap_err("acquire sqlite")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let row = sqlx::query(
+        "SELECT
+            MIN(interval_start),
+            MAX(interval_start)
+
+         FROM consumption"
+    )
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| {
+            log::error!("Fetch data limit: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        let limit = DataLimit {
+            earliestDate: row.get(0),
+            latestDate: row.get(1),
+        };
+
+    Ok(Json(limit))
 }

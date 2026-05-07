@@ -8,7 +8,7 @@ const { sqlite3, db } = await initDatabase();
 window.sqlite3 = sqlite3; // for debugging
 window.db = db; // for debugging
 
-const { earliestDate, latestDate } = getDataLimits(db);
+const { earliestDate, latestDate } = await getDataLimits(db);
 
 const urlParams = new URLSearchParams(window.location.search);
 
