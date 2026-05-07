@@ -32,14 +32,14 @@ function updateUrl(startStr, endStr) {
     }, 500);
 }
 
-function render() {
+async function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const { data, timeWindow } = getPriceDistribution(db, startStr, endStr);
+    const { data, timeWindow } = await getPriceDistribution(db, startStr, endStr);
     const slotsPerDay = 48;
 
     const maxX = d3.max(data, d => Math.max(d.import_rate, d.export_rate)) || 0;
@@ -282,7 +282,7 @@ function render() {
 }
 
 // Initial render
-render();
+await render();
 
 let pendingUpdate = false;
 window.addEventListener('wheel', (e) => {
@@ -304,8 +304,9 @@ window.addEventListener('wheel', (e) => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 }, { passive: false });
@@ -314,8 +315,9 @@ window.addEventListener('resize', () => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 });

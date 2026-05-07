@@ -115,7 +115,7 @@ export async function getConsumption(db, startStr, endStr, type = 'IMPORT') {
     return { data, timeWindow };
 }
 
-export function getPriceDistribution(db, startStr, endStr) {
+export async function getPriceDistribution(db, startStr, endStr) {
     const timeWindow = getTimeWindow(startStr, endStr);
     const sql = `
         SELECT
