@@ -1,6 +1,6 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { initDatabase, getPriceDistribution, getStandingCharge, getSlotCountsByDay, getTimeWindow } from '/js/db.js';
+import { initDatabase, getPriceDistribution, getStandingCharge, getTimeWindow } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { importThresholds, exportThresholds } from '/js/thresholds.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
@@ -47,16 +47,14 @@ async function render() {
     const interval = 0.5;
 
     // Standing charge total map and slot counts
-    const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
-    const slotsByDay = getSlotCountsByDay(db, startStr, endStr, 'IMPORT');
+    const standingCharges = await getStandingCharge(db, startStr, endStr, 'IMPORT');
     let slotBasedStandingCharge = 0;
     let totalSlotsPeriod = 0;
-    for (const [day, standingCharge] of standingChargeMap.entries()) {
-        const slots = slotsByDay.get(day) || 0;
-        const slotStandingCharge = (standingCharge || 0) * (slots / slotsPerDay);
+    standingCharges.map(({day, daily_standing_charge, slots}) => {
+        const slotStandingCharge = (daily_standing_charge || 0) * (slots / slotsPerDay);
         slotBasedStandingCharge += slotStandingCharge;
         totalSlotsPeriod += slots;
-    }
+    });
 
     // 1. Pre-calculate bins
     const thresholds = d3.range(0, ceilX + interval, interval);

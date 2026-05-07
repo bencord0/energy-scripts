@@ -141,62 +141,17 @@ export async function getConsumptionByTimeOfDay(db, startStr, endStr) {
     return { data, timeWindow };
 }
 
-export function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
-    /**
-     * Returns a map of date key (YYYY-MM-DD) to standing charge in pence.
-     * Queries tariff_rates table for standing charges active during the period.
-     */
-    const sql = `
-        SELECT
-            date(r.valid_from) as day,
-            AVG(r.daily_standing_charge)
-        FROM tariff_rates as r
-        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-        WHERE r.valid_from >= $start AND r.valid_from < $end
-          AND p.type = $type
-        GROUP BY day
-    `;
-
-    const dateMap = new Map();
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-            $type: type
-        },
-        callback: (row) => {
-            dateMap.set(row[0], row[1]);
-        },
+export async function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
+    const query = new URLSearchParams({
+        "start": startStr,
+        "end": endStr,
+        "type": type,
     });
 
-    return dateMap;
-}
+    let response = await fetch("/api/standing-charge?" + query.toString());
+    let data = await response.json();
 
-export function getSlotCountsByDay(db, startStr, endStr, type = 'IMPORT') {
-    const sql = `
-        SELECT
-            date(c.interval_start) as day,
-            COUNT(*) as slots
-        FROM consumption as c
-        LEFT JOIN tariff_rates as r ON c.interval_start = r.valid_from
-        JOIN products as p ON r.product_code = p.product_code AND r.tariff_code = p.tariff_code
-        WHERE c.interval_start >= $start AND c.interval_start < $end
-          AND p.type = $type
-        GROUP BY date(c.interval_start)
-        ORDER BY day ASC
-    `;
-
-    const map = new Map();
-    db.exec({
-        sql: sql,
-        bind: { $start: startStr, $end: endStr, $type: type },
-        callback: (row) => {
-            map.set(row[0], row[1]);
-        }
-    });
-
-    return map;
+    return data;
 }
 
 export function getAgilePredictions(db, startStr, endStr, region) {

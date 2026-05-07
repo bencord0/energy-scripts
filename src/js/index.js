@@ -53,7 +53,7 @@ async function render() {
 
     const { data: importData, timeWindow } = await getConsumption(db, startStr, endStr, 'IMPORT');
     const { data: exportData } = await getConsumption(db, startStr, endStr, 'EXPORT');
-    const standingChargeMap = getStandingCharge(db, startStr, endStr, 'IMPORT');
+    const standingCharges = await getStandingCharge(db, startStr, endStr, 'IMPORT');
     const pricePredictions = getAgilePredictions(db, startStr, endStr, 'A')
 
     const exportInfoMap = new Map(exportData.map(d => {
@@ -84,7 +84,14 @@ async function render() {
 
     function standingChargeForDate(date) {
         const key = dayKeyUTC(date);
-        return standingChargeMap.get(key) || 0;
+        let charge = 0;
+        standingCharges.map(({day, daily_standing_charge}) => {
+            if (day == key) {
+                charge = daily_standing_charge;
+            }
+        });
+
+        return charge;
     }
 
 
@@ -359,7 +366,7 @@ async function render() {
     // Group slots by day to be careful about fractional day floating point arithmetic
     const standingCharge = Array.from(d3.group(slotsWithConsumption, d => dayKeyUTC(new Date(d.timestamp))))
         .reduce((sum, [dayKey, slots]) => {
-            const dailyStandingCharge = standingChargeMap.get(dayKey) || 0;
+            const dailyStandingCharge = standingChargeForDate(dayKey);
             return sum + (dailyStandingCharge * slots.length / slotsPerDay);
         }, 0);
 

@@ -7,3 +7,4 @@ pub use consumption::{
     consumption_by_time,
 };
 pub use price_distribution::price_distribution;
+pub use standing_charge::standing_charge;
