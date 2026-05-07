@@ -116,46 +116,15 @@ export async function getConsumption(db, startStr, endStr, type = 'IMPORT') {
 }
 
 export async function getPriceDistribution(db, startStr, endStr) {
-    const timeWindow = getTimeWindow(startStr, endStr);
-    const sql = `
-        SELECT
-            import.value as import_rate,
-            export.value as export_rate,
-            c.consumption as consumption,
-            c.generation as generation,
-            1 as slots,
-            (import.value * c.consumption) as cost,
-            (export.value * c.generation) as sale
-        FROM consumption as c
-        LEFT JOIN tariff_rates as import
-        LEFT JOIN tariff_rates as export
-        ON c.interval_start = import.valid_from AND c.interval_start = export.valid_from
-        JOIN products as pimport ON import.product_code = pimport.product_code AND import.tariff_code = pimport.tariff_code
-        JOIN products as pexport ON export.product_code = pexport.product_code AND export.tariff_code = pexport.tariff_code
-        WHERE c.interval_start >= $start AND c.interval_start < $end
-            AND pimport.type = 'IMPORT'
-            AND pexport.type = 'EXPORT'
-    `;
-
-    const data = [];
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-        },
-        callback: (row) => {
-            data.push({
-                import_rate: row[0],
-                export_rate: row[1],
-                consumption: row[2],
-                generation: row[3],
-                slots: row[4],
-                cost: row[5],
-                sale: row[6],
-            });
-        },
+    const query = new URLSearchParams({
+        "start": startStr,
+        "end": endStr,
     });
+
+    let response = await fetch("/api/price-distribution?" + query.toString());
+    let data = await response.json();
+
+    const timeWindow = getTimeWindow(startStr, endStr);
     return { data, timeWindow };
 }
 

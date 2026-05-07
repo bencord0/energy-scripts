@@ -112,7 +112,7 @@ async function render() {
     });
 
     // Recompute maxY and minY to include stacked totals
-    maxY = d3.max(importBins, d => d.cost_with_standing_charge) || d3.max(inputs, d => d.cost) || 0;
+    maxY = d3.max(importBins, d => d.cost_with_standing_charge) || d3.max(importBins, d => d.cost) || 0;
     minY = -d3.max(exportBins, d => d.sale) || 0;
 
     // 2. Generate Iso-Usage Lines
