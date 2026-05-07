@@ -128,59 +128,17 @@ export async function getPriceDistribution(db, startStr, endStr) {
     return { data, timeWindow };
 }
 
-export function getConsumptionByTimeOfDay(db, startStr, endStr) {
-    // Query all consumption data within the window, grouped by 30-minute time of day
-    const sql = `
-        SELECT
-            strftime('%H:%M', c.interval_start) as t_30m,
-            import.value as import_rate,
-            export.value as export_rate,
-            SUM(c.consumption) as consumption,
-            SUM(c.generation) as generation
-        FROM consumption as c
-        LEFT JOIN tariff_rates as import ON c.interval_start = import.valid_from
-        LEFT JOIN tariff_rates as export ON c.interval_start = export.valid_from
-        JOIN products as pimport ON import.product_code = pimport.product_code AND pimport.tariff_code = pimport.tariff_code
-        JOIN products as pexport ON export.product_code = pexport.product_code AND pexport.tariff_code = pexport.tariff_code
-        WHERE c.interval_start >= $start AND c.interval_start < $end
-          AND pimport.type = 'IMPORT'
-          AND pexport.type = 'EXPORT'
-        GROUP BY t_30m, import_rate
-        ORDER BY t_30m ASC, import_rate DESC
-    `;
-
-    const data = [];
-    db.exec({
-        sql: sql,
-        bind: {
-            $start: startStr,
-            $end: endStr,
-        },
-        callback: (row) => {
-            const timeStr = row[0];
-            const [hours, minutes] = timeStr.split(':').map(Number);
-
-            // Create a date object for today with the time of day
-            const timestamp = new Date();
-            timestamp.setHours(hours, minutes, 0, 0);
-
-            // Create end timestamp (30 minutes later)
-            const timestampEnd = new Date(timestamp);
-            timestampEnd.setMinutes(timestampEnd.getMinutes() + 30);
-
-            data.push({
-                time_of_day: timeStr,
-                timestamp: timestamp,
-                timestampEnd: timestampEnd,
-                import_rate: row[1],
-                export_rate: row[2],
-                consumption: row[3],
-                generation:  row[4],
-            });
-        },
+export async function getConsumptionByTimeOfDay(db, startStr, endStr) {
+    const query = new URLSearchParams({
+        "start": startStr,
+        "end": endStr,
     });
 
-    return { data, timeWindow: '30m' };
+    let response = await fetch("/api/consumption-by-time?" + query.toString());
+    let data = await response.json();
+
+    const timeWindow = getTimeWindow(startStr, endStr);
+    return { data, timeWindow };
 }
 
 export function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {

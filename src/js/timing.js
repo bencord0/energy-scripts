@@ -34,14 +34,26 @@ function updateUrl(startStr, endStr) {
     }, 500);
 }
 
-function render() {
+async function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    const { data, timeWindow } = getConsumptionByTimeOfDay(db, startStr, endStr);
+    let { data, timeWindow } = await getConsumptionByTimeOfDay(db, startStr, endStr);
+    data = data.map((d) => {
+        let [hours, minutes] = d.time_of_day.split(':').map(Number);
+        let start = new Date();
+        start.setHours(hours, minutes, 0, 0);
+        d.timestamp = start;
+
+        let end = new Date(d.timestamp);
+        end.setMinutes(end.getMinutes() + 30);
+        d.timestampEnd = end;
+
+        return d;
+    });
 
     const maxConsumption = d3.max(data, d => d.consumption) || 1;
 
@@ -96,7 +108,7 @@ function render() {
     updateUrl(startStr, endStr);
 }
 
-render();
+await render();
 
 let pendingUpdate = false;
 window.addEventListener('wheel', (e) => {
@@ -117,8 +129,9 @@ window.addEventListener('wheel', (e) => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 }, { passive: false });
@@ -127,8 +140,9 @@ window.addEventListener('resize', () => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 });
