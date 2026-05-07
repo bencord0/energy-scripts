@@ -10,6 +10,7 @@ use chrono::{
 };
 
 mod app;
+pub mod api;
 pub mod dates;
 pub use app::AppState;
 
