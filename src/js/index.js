@@ -490,8 +490,9 @@ window.addEventListener('wheel', (e) => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 }, { passive: false });
@@ -500,8 +501,9 @@ window.addEventListener('resize', () => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 });
@@ -657,8 +659,9 @@ chartElement.addEventListener('touchmove', (e) => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 }, { passive: false });
@@ -709,8 +712,9 @@ setInterval(() => {
     if (!pendingUpdate) {
         pendingUpdate = true;
         requestAnimationFrame(() => {
-            render();
-            pendingUpdate = false;
+            render().then(() => {
+                pendingUpdate = false;
+            });
         });
     }
 }, 60 * 1000);
