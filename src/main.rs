@@ -31,6 +31,7 @@ async fn main() -> Result<(), Error> {
         .route("/api/consumption-by-time", get(api::consumption_by_time))
         .route("/api/price-distribution", get(api::price_distribution))
         .route("/api/standing-charge", get(api::standing_charge))
+        .route("/api/agile-prediction", get(api::agile_prediction))
         .fallback_service(ServeDir::new("./src"))
         .layer(TowerTraceLayer::new_for_http())
         .with_state(Arc::new(state))

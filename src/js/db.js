@@ -154,42 +154,18 @@ export async function getStandingCharge(db, startStr, endStr, type = 'IMPORT') {
     return data;
 }
 
-export function getAgilePredictions(db, startStr, endStr, region) {
+export async function getAgilePredictions(db, startStr, endStr, region) {
     const timeWindow = getTimeWindow(startStr, endStr);
-    const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
 
-    const sql = `
-        SELECT
-            strftime('%Y-%m-%dT00:00:00Z', timestamp), -- daily
-            strftime('%Y-%m-%dT%H:00:00Z', timestamp), -- hourly
-            timestamp,                                 -- half-hourly
-
-            AVG(prediction)
-        FROM agile_predictions
-        WHERE
-            region = $region
-        AND timestamp >= $start
-        AND timestamp < $end
-        GROUP BY
-          CASE $window
-          WHEN '1d' THEN date(timestamp)
-          WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', timestamp)
-          ELSE timestamp
-        END
-        ORDER BY timestamp ASC
-    `;
-
-    const data = [];
-    db.exec({
-        sql: sql,
-        bind: { $start: startStr, $end: endStr, $region: region, $window: timeWindow },
-        callback: (row) => {
-            data.push({
-                timestamp: new Date(row[timeColIdx]),
-                prediction: row[3],
-            });
-        }
+    const query = new URLSearchParams({
+        "start": startStr,
+        "end": endStr,
+        "region": region,
+        "window": timeWindow,
     });
+
+    let response = await fetch("/api/agile-prediction?" + query.toString());
+    let data = await response.json();
 
     return data;
 }

@@ -54,7 +54,7 @@ async function render() {
     const { data: importData, timeWindow } = await getConsumption(db, startStr, endStr, 'IMPORT');
     const { data: exportData } = await getConsumption(db, startStr, endStr, 'EXPORT');
     const standingCharges = await getStandingCharge(db, startStr, endStr, 'IMPORT');
-    const pricePredictions = getAgilePredictions(db, startStr, endStr, 'A')
+    const pricePredictions = await getAgilePredictions(db, startStr, endStr, 'A')
 
     const exportInfoMap = new Map(exportData.map(d => {
         const timestamp = new Date(d.timestamp);
@@ -93,7 +93,6 @@ async function render() {
 
         return charge;
     }
-
 
     // Compute maxP considering standing charge and export rates
     const maxP = 100;
