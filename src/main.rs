@@ -115,8 +115,8 @@ async fn version(State(app): State<Arc<AppState>>)
 
 #[derive(Serialize, Debug)]
 struct DataLimit {
-    earliestDate: String,
-    latestDate: String,
+    earliest_date: String,
+    latest_date: String,
 }
 
 async fn data_limits(State(app): State<Arc<AppState>>)
@@ -143,8 +143,8 @@ async fn data_limits(State(app): State<Arc<AppState>>)
         })?;
 
         let limit = DataLimit {
-            earliestDate: row.get(0),
-            latestDate: row.get(1),
+            earliest_date: row.get(0),
+            latest_date: row.get(1),
         };
 
     Ok(Json(limit))

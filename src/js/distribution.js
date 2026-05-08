@@ -1,6 +1,6 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { getPriceDistribution, getStandingCharge, getTimeWindow } from '/js/db.js';
+import { getPriceDistribution, getStandingCharge, getTimeWindow, getDataLimits } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { importThresholds, exportThresholds } from '/js/thresholds.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
@@ -280,6 +280,7 @@ async function render() {
 await render();
 
 let pendingUpdate = false;
+const { earliest_day, latestDay } = await getDataLimits();
 window.addEventListener('wheel', (e) => {
     e.preventDefault();
 
@@ -290,9 +291,8 @@ window.addEventListener('wheel', (e) => {
         }
 
         // Limit of our data
-        const earliestDay = new Date("2025-12-01");
-        if (startDate < earliestDay) {
-            startDate.setTime(earliestDay.getTime());
+        if (startDate < earliest_day) {
+            startDate.setTime(earliest_day.getTime());
         }
     }
 

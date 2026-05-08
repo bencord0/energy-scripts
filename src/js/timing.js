@@ -4,8 +4,6 @@ import { getConsumptionByTimeOfDay, getDataLimits } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
 import { formatCost, getTimeWindowInfo } from '/js/utils.js';
 
-const { earliestDate, latestDate } = await getDataLimits();
-
 const urlParams = new URLSearchParams(window.location.search);
 
 const millisecondsPerDay = 864e5;
@@ -107,6 +105,8 @@ async function render() {
 await render();
 
 let pendingUpdate = false;
+
+const { earliest_date, latest_date } = await getDataLimits();
 window.addEventListener('wheel', (e) => {
     e.preventDefault();
 
@@ -117,8 +117,8 @@ window.addEventListener('wheel', (e) => {
         }
 
         // Limit to available data range
-        if (earliestDate && startDate < earliestDate) {
-            startDate.setTime(earliestDate.getTime());
+        if (earliest_date && startDate < earliest_date) {
+            startDate.setTime(earliest_date.getTime());
         }
     }
 
