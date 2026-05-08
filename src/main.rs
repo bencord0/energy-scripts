@@ -28,6 +28,9 @@ struct Args {
 
     #[arg(long)]
     unix: Option<String>,
+
+    #[arg(long)]
+    static_fallback: Option<String>,
 }
 
 #[tokio::main]
@@ -37,9 +40,9 @@ async fn main() -> Result<(), Error> {
     // basic logging, stdout
     tracing_subscriber::fmt::init();
 
-    let state = AppState::connect(&SQLITE_URL)?;
+    let state = Arc::new(AppState::connect(&SQLITE_URL)?);
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/hello", get(index))
         .route("/version", get(version))
         .route("/api/consumption", get(api::consumption))
@@ -48,10 +51,12 @@ async fn main() -> Result<(), Error> {
         .route("/api/standing-charge", get(api::standing_charge))
         .route("/api/agile-prediction", get(api::agile_prediction))
         .route("/api/data-limits", get(data_limits))
-        .fallback_service(ServeDir::new("./src"))
         .layer(TowerTraceLayer::new_for_http())
-        .with_state(Arc::new(state))
-        ;
+        .with_state(state);
+
+    if let Some(path) = args.static_fallback {
+        app = app.fallback_service(ServeDir::new(path))
+    }
 
     // JoinSet cancels all tasks when dropped
     let mut set = tokio::task::JoinSet::new();
