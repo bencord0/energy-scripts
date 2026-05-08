@@ -150,7 +150,6 @@ pub async fn consumption_by_time(
     -> Result<Json<Vec<ConsumptionByTime>>, StatusCode>
 {
     let ConsumptionByTimeQuery { start, end } = query;
-    log::info!("consumption_by_time: {start} - {end}");
     let mut data: Vec<ConsumptionByTime> = Vec::new();
 
     let mut conn = app
