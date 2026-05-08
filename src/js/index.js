@@ -47,11 +47,30 @@ async function render() {
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    // TODO: Parallel
-    const { data: importData, timeWindow } = await getConsumption(startStr, endStr, 'IMPORT');
-    const { data: exportData } = await getConsumption(startStr, endStr, 'EXPORT');
-    const standingCharges = await getStandingCharge(startStr, endStr, 'IMPORT');
-    const pricePredictions = await getAgilePredictions(startStr, endStr, 'A')
+    let timeWindow;
+    let importData;
+    let exportData;
+    let standingCharges;
+    let pricePredictions;
+
+    await Promise.all([
+        getConsumption(startStr, endStr, 'IMPORT').then((result) => {
+            timeWindow = result.timeWindow;
+            importData = result.data;
+        }),
+
+        getConsumption(startStr, endStr, 'EXPORT').then((result) => {
+            exportData = result.data;
+        }),
+
+        getStandingCharge(startStr, endStr, 'IMPORT').then(result => {
+            standingCharges = result;
+        }),
+
+        getAgilePredictions(startStr, endStr, 'A').then(result => {
+            pricePredictions = result;
+        }),
+    ]);
 
     const exportInfoMap = new Map(exportData.map(d => {
         const timestamp = new Date(d.timestamp);
@@ -62,6 +81,7 @@ async function render() {
         const exportInfo = exportInfoMap.get(timestamp.getTime()) || { rate: 0, sale: 0 };
         return {
             ...d,
+            timestamp,
             exportRate: exportInfo.rate,
             exportSale: exportInfo.sale
         };

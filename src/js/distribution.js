@@ -35,16 +35,28 @@ async function render() {
     const startStr = startDate.toISOString().slice(0, 16);
     const endStr = endDate.toISOString().slice(0, 16);
 
-    // TODO: Send requests in parallel
-    const { data, timeWindow } = await getPriceDistribution(db, startStr, endStr);
-    const slotsPerDay = 48;
+    // Fetch requests in parallel
+    let timeWindow;
+    let data;
+    let standingCharges;
 
+    await Promise.all([
+        getPriceDistribution(startStr, endStr).then(result => {
+            timeWindow = result.timeWindow;
+            data = result.data;
+        }),
+
+        getStandingCharge(startStr, endStr, 'IMPORT').then(result => {
+            standingCharges = result;
+        }),
+    ]);
+
+    const slotsPerDay = 48;
     const maxX = d3.max(data, d => Math.max(d.import_rate, d.export_rate)) || 0;
     const ceilX = Math.ceil(maxX / 10) * 10;
     const interval = 0.5;
 
     // Standing charge total map and slot counts
-    const standingCharges = await getStandingCharge(db, startStr, endStr, 'IMPORT');
     let slotBasedStandingCharge = 0;
     let totalSlotsPeriod = 0;
     standingCharges.map(({day, daily_standing_charge, slots}) => {
