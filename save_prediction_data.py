@@ -31,18 +31,17 @@ def main():
     response = requests.get(url)
 
     data = response.json()
-    prices = data[0]["prices"]
     with data_file.open("w") as df:
-        df.write(json.dumps(prices, indent=2))
+        df.write(json.dumps(data, indent=2))
 
     connection = connect_db(args.db)
     migrate_db(connection)
 
-    confirmed_timestamp = lastest_confirmed_slot(
+    confirmed_timestamp = latest_confirmed_slot(
         'AGILE-24-10-01', 'E-1R-AGILE-24-10-01-A', connection)
 
     with connection:
-        for slot in prices:
+        for slot in data[0]["prices"]:
             timestamp = str2dt(slot["date_time"])
             prediction = slot["agile_pred"]
 
@@ -84,7 +83,7 @@ def migrate_db(connection):
             COMMIT;
         """)
 
-def lastest_confirmed_slot(product_code, tariff_code, connection):
+def latest_confirmed_slot(product_code, tariff_code, connection):
     with connection:
         result = connection.execute('''
             SELECT valid_from
