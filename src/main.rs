@@ -68,7 +68,7 @@ async fn main() -> Result<(), Error> {
     }
 
     if let Some(unix) = args.unix {
-        let _ = tokio::fs::remove_file(&unix).await?;
+        let _ = tokio::fs::remove_file(&unix).await; // ignore errors
         let unixlistener = tokio::net::UnixListener::bind(&unix)?;
         log::info!("Listening on {unixlistener:?}");
         set.spawn(axum::serve(unixlistener, app).into_future());
