@@ -76,7 +76,7 @@ async fn main() -> Result<(), Error> {
         sqlx::query(
             "DELETE FROM agile_predictions
             WHERE region = ?
-              AND timestamp = ?"
+              AND timestamp < ?"
         )
             .bind(&region)
             .bind(&dt2str(interval))
