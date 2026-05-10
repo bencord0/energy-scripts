@@ -54,7 +54,7 @@ async fn main() -> Result<(), Error> {
     ).await?;
 
     for slot in &predictions[0].prices {
-        let timestamp = &slot.date_time;
+        let timestamp = str2dt(&slot.date_time)?;
         let prediction = &slot.agile_pred;
 
         sqlx::query(
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Error> {
             VALUES (?, ?, ?);"
         )
             .bind(&region)
-            .bind(&timestamp)
+            .bind(dt2str(timestamp))
             .bind(&prediction)
             .execute(&mut *conn)
             .await?;
