@@ -68,8 +68,14 @@ async fn main() -> Result<(), Error> {
     }
 
     if let Some(unix) = args.unix {
+        // Bind a new unix socket
         let _ = tokio::fs::remove_file(&unix).await; // ignore errors
         let unixlistener = tokio::net::UnixListener::bind(&unix)?;
+
+        // Let the webserver handle requests from others
+        let permissions = std::fs::Permissions::from_mode(0o666);
+        std::fs::set_permissions(&unix, permissions)?;
+
         log::info!("Listening on {unixlistener:?}");
         set.spawn(axum::serve(unixlistener, app).into_future());
     }
