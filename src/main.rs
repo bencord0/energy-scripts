@@ -9,7 +9,10 @@ use axum::{
 use eyre::{WrapErr, Error};
 use sqlx::Row;
 use serde::Serialize;
-use std::sync::Arc;
+use std::{
+    os::unix::fs::PermissionsExt,
+    sync::Arc,
+};
 use tower_http::{
     services::ServeDir,
     trace::TraceLayer as TowerTraceLayer,
