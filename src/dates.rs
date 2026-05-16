@@ -41,8 +41,27 @@ pub fn str2dt(s: &str) -> Result<DateTime<Utc>, Error> {
 
 #[test]
 fn test_str2dt() {
-    str2dt("2026-05-06").expect("valid date");
-    str2dt("2026-05-06T21:30Z").expect("valid datetime");
-    str2dt("2026-05-06T21:30:00Z").expect("valid datetime");
-    str2dt("2026-05-06T21:30+01:00").expect("valid datetime");
+    let cases = [
+        "2026-05-06",
+        "2026-05-06T21:30Z",
+        "2026-05-06T21:30:00Z",
+        "2026-05-06T21:30+01:00",
+    ];
+    for s in cases {
+        str2dt(s).expect("valid datetime");
+    }
+}
+
+#[test]
+fn test_dt2str() {
+    let cases = [
+        ("2026-05-06", "2026-05-06T00:00:00Z"),
+        ("2026-05-06T21:30Z", "2026-05-06T21:30:00Z"),
+        ("2026-05-06T21:30:00Z", "2026-05-06T21:30:00Z"),
+        ("2026-05-06T21:30+01:00", "2026-05-06T20:30:00Z"),
+    ];
+    for (input, expected) in cases {
+        let dt = str2dt(input).expect("valid datetime");
+        assert_eq!(dt2str(dt), expected);
+    }
 }
