@@ -14,7 +14,7 @@ pub mod api;
 pub mod dates;
 pub use app::AppState;
 
-const ISO_FORMAT: &str = "%Y-%m-%dT00:00Z";
+const ISO_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
 pub struct OctopusClient {
     // TODO: Use a pre-authenticated request::Client

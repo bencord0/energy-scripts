@@ -3,11 +3,16 @@ use chrono::{
     DateTime,
     NaiveDate,
     NaiveDateTime,
+    Timelike,
     Utc,
 };
 
 pub fn dt2str(dt: DateTime<Utc>) -> String {
-    dt.format("%Y-%m-%dT%H:%MZ").to_string()
+    dt
+        .with_second(0).unwrap()
+        .with_nanosecond(0).unwrap()
+        .format("%Y-%m-%dT%H:%M:00Z")
+        .to_string()
 }
 
 pub fn str2dt(s: &str) -> Result<DateTime<Utc>, Error> {
@@ -38,5 +43,6 @@ pub fn str2dt(s: &str) -> Result<DateTime<Utc>, Error> {
 fn test_str2dt() {
     str2dt("2026-05-06").expect("valid date");
     str2dt("2026-05-06T21:30Z").expect("valid datetime");
+    str2dt("2026-05-06T21:30:00Z").expect("valid datetime");
     str2dt("2026-05-06T21:30+01:00").expect("valid datetime");
 }
