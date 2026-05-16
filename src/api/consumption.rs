@@ -32,8 +32,8 @@ pub struct Consumption {
 pub struct ConsumptionQuery {
     start: String,
     end: String,
-    r#type: String,
-    window: String,
+    r#type: Option<String>,
+    window: Option<String>,
 }
 
 #[axum::debug_handler]
@@ -45,6 +45,9 @@ pub async fn consumption(
 {
     let ConsumptionQuery { start, end, r#type, window } = query;
     let mut data: Vec<Consumption> = Vec::new();
+
+    let r#type: String = r#type.unwrap_or(String::from("IMPORT"));
+    let window: String = window.unwrap_or(String::from("30m"));
 
     let Some(idx) = ["1d", "1h", "30m"].iter().position(|i| *i == &window) else {
         return Err(StatusCode::BAD_REQUEST);
