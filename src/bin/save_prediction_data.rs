@@ -71,18 +71,18 @@ async fn main() -> Result<(), Error> {
             .bind(&prediction)
             .execute(&mut *conn)
             .await?;
-
-
-        sqlx::query(
-            "DELETE FROM agile_predictions
-            WHERE region = ?
-              AND timestamp < ?"
-        )
-            .bind(&region)
-            .bind(&dt2str(interval))
-            .execute(&mut *conn)
-            .await?;
     }
+
+
+    sqlx::query(
+        "DELETE FROM agile_predictions
+        WHERE region = ?
+          AND timestamp < ?"
+    )
+        .bind(&region)
+        .bind(&dt2str(interval))
+        .execute(&mut *conn)
+        .await?;
 
     Ok(())
 }
