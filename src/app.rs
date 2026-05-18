@@ -21,10 +21,13 @@ const PG_URL: &'static str = "postgres:///power";
 
 impl AppState {
     pub fn connect(db: &str) -> Result<Self, Error> {
-        let sqlite = PoolOptions::<Sqlite>::new().connect_lazy(db)?;
+        let sqlite = PoolOptions::<Sqlite>::new()
+            .max_lifetime(Duration::from_secs(1))
+            .connect_lazy(db)?;
 
         let pg_opts = PoolOptions::<Postgres>::new()
-            .acquire_timeout(Duration::new(1, 0));
+            .acquire_timeout(Duration::new(1, 0))
+            .max_lifetime(Duration::from_secs(60));
         let pg = pg_opts.connect_lazy(PG_URL)?;
 
         Ok(Self {
