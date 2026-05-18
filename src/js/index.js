@@ -118,8 +118,8 @@ async function render() {
 
     // Precompute standing charge and usage stacked above the standing charge bar
     // Only include rows for slots where we have consumption data
-    const slotsWithConsumption = data.filter(d => d.consumption !== null && d.consumption !== undefined);
-    const slotsWithGeneration = data.filter(d => d.generation !== null && d.generation !== undefined);
+    const slotsWithConsumption = data.filter(d => d.consumption > 0);
+    const slotsWithGeneration = data.filter(d => d.generation > 0);
 
     const standingChargeRows = slotsWithConsumption.map(d => {
         const timestamp = new Date(d.timestamp);
