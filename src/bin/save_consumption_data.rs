@@ -19,6 +19,7 @@ use sqlx::{
 use power::{
     AppState,
     OctopusClient,
+    clients::octopus::Consumption,
     dates::{
         dt2str,
         str2dt,
@@ -39,24 +40,46 @@ struct Args {
     #[arg(long)]
     to: Option<String>,
 
+    #[arg(long)]
+    force: Option<bool>,
+
     db: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let Args { account_id, mpan, serial, db, from, to } = Args::parse();
+    let Args { account_id, mpan, serial, db, from, to, force } = Args::parse();
 
     let octopus = OctopusClient::new()
         .api_key(env::var("OCTOPUS_API_KEY")?);
 
     // XXX: On failure, attempt a read from cache
-    let from = from.map(|f| str2dt(&f).expect("not datestamp"));
+    let mut from = from.map(|f| str2dt(&f).expect("not datestamp"));
     let to = to.map(|t| str2dt(&t).expect("not datestamp"));
-    let response = octopus.get_consumption(&mpan, &serial, from, to).await?;
+    let force = force.unwrap_or_default();
+
+    let mut consumption_data: Consumption = Default::default();
+    loop {
+        let response = octopus.get_consumption(&mpan, &serial, from, to).await?;
+        consumption_data.count += response.count;
+        consumption_data.results.extend(response.results);
+
+        let last = consumption_data.results.last();
+        from = last.map(|result| str2dt(&result.interval_start).unwrap());
+
+        if response.next.is_none() {
+            break
+        }
+
+        let condition: bool = from < to;
+        if !condition {
+            break
+        }
+    }
 
     // If request is successful, cache the response to a file
     let data_file = PathBuf::from(format!("data/consumption-{mpan}-{serial}.json"));
-    fs::write(&data_file, serde_json::to_string(&response)?.as_bytes())?;
+    fs::write(&data_file, serde_json::to_vec_pretty(&consumption_data)?)?;
 
     let app = AppState::connect(&db)?;
     let mut conn = app.acquire_sqlite().await?;
@@ -65,20 +88,20 @@ async fn main() -> Result<(), Error> {
     migrate_db(&mut conn).await?;
     let interval = last_interval(&mut conn).await;
 
-    for data in response.results {
+    for data in consumption_data.results {
         let interval_start = str2dt(&data.interval_start)?;
         let interval_end = str2dt(&data.interval_end)?;
         let consumption = data.consumption.clone();
 
-        if let Ok(interval) = interval {
+        if let Ok(interval) = interval && !force {
             if interval_start <= interval {
                 continue
             }
         }
 
         print!("INSERT consumption for {account_id} at {interval_start}...");
-        sqlx::query::<Sqlite>(
-            "INSERT INTO consumption(
+        if let Err(err) = sqlx::query::<Sqlite>(
+            "INSERT OR REPLACE INTO consumption(
                 account,
                 interval_start,
                 interval_end,
@@ -90,8 +113,12 @@ async fn main() -> Result<(), Error> {
             .bind(dt2str(interval_end))
             .bind(consumption)
             .execute(&mut *conn)
-            .await?;
-
+            .await {
+            println!(" ERR");
+            return Err(err.into());
+        } else {
+            println!(" OK");
+        }
     }
 
     println!("Saved consumption data to {data_file:?}");
