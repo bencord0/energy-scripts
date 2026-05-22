@@ -48,19 +48,14 @@ async function render() {
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
     let timeWindow;
-    let importData;
-    let exportData;
+    let data;
     let standingCharges;
     let pricePredictions;
 
     await Promise.all([
-        getConsumption(startStr, endStr, 'IMPORT').then((result) => {
+        getConsumption(startStr, endStr).then((result) => {
             timeWindow = result.timeWindow;
-            importData = result.data;
-        }),
-
-        getConsumption(startStr, endStr, 'EXPORT').then((result) => {
-            exportData = result.data;
+            data = result.data;
         }),
 
         getStandingCharge(startStr, endStr, 'IMPORT').then(result => {
@@ -72,18 +67,11 @@ async function render() {
         }),
     ]);
 
-    const exportInfoMap = new Map(exportData.map(d => {
+    data = data.map(d => {
         const timestamp = new Date(d.timestamp);
-        return [timestamp.getTime(), { rate: d.rate, sale: d.sale }];
-    }));
-    const data = importData.map(d => {
-        const timestamp = new Date(d.timestamp);
-        const exportInfo = exportInfoMap.get(timestamp.getTime()) || { rate: 0, sale: 0 };
         return {
             ...d,
             timestamp,
-            exportRate: exportInfo.rate,
-            exportSale: exportInfo.sale
         };
     });
 
@@ -126,7 +114,7 @@ async function render() {
         const standingChargePence = standingChargeForDate(timestamp) / slotsPerDay;
         return {
             timestamp,
-            rate: d.rate,
+            import_rate: d.import_rate,
             y2: (standingChargePence) / scaleFactor,
             hasUsage: (d.consumption || 0) > 0,
         };
@@ -139,7 +127,8 @@ async function render() {
         const usageScaled = (d.cost || 0) / scaleFactor;
         return {
             timestamp,
-            rate: d.rate,
+            import_rate: d.import_rate,
+            export_rate: d.export_rate,
             y1: standingChargeScaled,
             y2: standingChargeScaled + usageScaled,
         };
@@ -149,11 +138,11 @@ async function render() {
     const dataMaxY = Math.max(
         ...data.map(d => d.consumption || 0),
         ...usageRows.map(d => d.y2 || 0),
-        ...data.map(d => (d.rate || 0) / scaleFactor),
+        ...data.map(d => (d.import_rate || 0) / scaleFactor),
     );
     const dataMinY = Math.max(
         ...data.map(d => d.generation || 0),
-        ...data.map(d => (d.exportRate || 0) / scaleFactor),
+        ...data.map(d => (d.export_rate || 0) / scaleFactor),
     );
     const yMax = Math.max(maxKWh, dataMaxY * 1.05); // 5% headroom
     const yMin = Math.max(0, dataMinY * 1.05);
@@ -212,7 +201,7 @@ async function render() {
                 x: 'timestamp',
                 y: 'y2',
                 interval: interval,
-                fill: d => d.hasUsage ? d.rate : '#e0e0e0',
+                fill: d => d.hasUsage ? d.import_rate : '#e0e0e0',
                 fillOpacity: d => d.hasUsage ? 0.22 : 0.6,
                 inset: 0,
                 shapeRendering: "crispEdges",
@@ -234,23 +223,23 @@ async function render() {
                 y1: 'y1',
                 y2: 'y2',
                 interval: interval,
-                fill: 'rate',
+                fill: 'import_rate',
                 inset: 0,
                 shapeRendering: "crispEdges",
             }),
             // Exported Usage
             Plot.rectY(data, {
                 x: 'timestamp',
-                y: d => -(d.exportSale || 0) / scaleFactor,
+                y: d => -(d.sale || 0) / scaleFactor,
                 interval: interval,
-                fill: 'exportRate',
+                fill: 'export_rate',
                 inset: 0,
                 shapeRendering: "crispEdges",
             }),
             // Import Price
             Plot.rectY(data, {
                 x: 'timestamp',
-                y: d => d.rate / scaleFactor,
+                y: d => d.import_rate / scaleFactor,
                 interval: interval,
                 fill: "#ccc",
                 fillOpacity: 0.4,
@@ -261,7 +250,7 @@ async function render() {
             // Export Price
             Plot.rectY(data, {
                 x: 'timestamp',
-                y: d => -d.exportRate / scaleFactor,
+                y: d => -d.export_rate / scaleFactor,
                 interval: interval,
                 fill: "#ccc",
                 fillOpacity: 0.4,
@@ -345,12 +334,12 @@ async function render() {
                     return [
                         `Time: ${d3.timeFormat("%H:%M")(timestamp)}`,
                         `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
-                        `Import Price: ${(d.rate || 0).toFixed(2)} p/kWh`,
+                        `Import Price: ${(d.import_rate || 0).toFixed(2)} p/kWh`,
                         `Import Cost: ${formatCost((d.cost || 0))}`,
                         `Battery Charge: ${(d.charge || 0).toFixed(2)} kWh`,
                         `Battery Disharge: ${(d.discharge || 0).toFixed(2)} kWh`,
                         `Export: ${(d.generation || 0).toFixed(3)} kWh`,
-                        `Export Price: ${(d.exportRate || 0).toFixed(2)} p/kWh`,
+                        `Export Price: ${(d.export_rate || 0).toFixed(2)} p/kWh`,
                         `Export Sale: ${formatCost((d.sale || 0))}`,
                         `Standing Charge: ${standingChargeFraction.toFixed(2)} p`,
                         `Total Cost: ${formatCost(totalSlotCost)}`,

@@ -12,14 +12,12 @@ export function getTimeWindow(startStr, endStr) {
     }
 }
 
-export async function getConsumption(startStr, endStr, type = 'IMPORT') {
+export async function getConsumption(startStr, endStr) {
     const timeWindow = getTimeWindow(startStr, endStr);
-    const timeColIdx = ["1d", "1h", "30m"].indexOf(timeWindow);
 
     const query = new URLSearchParams({
         "start": startStr,
         "end": endStr,
-        "type": type,
         "window": timeWindow,
     });
 

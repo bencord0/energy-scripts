@@ -21,7 +21,8 @@ pub struct Consumption {
     timestamp: DateTime<Utc>,
     consumption: f32,
     generation: f32,
-    rate: f32,
+    import_rate: f32,
+    export_rate: f32,
     cost: f32,
     sale: f32,
     charge: f32,
@@ -32,7 +33,6 @@ pub struct Consumption {
 pub struct ConsumptionQuery {
     start: String,
     end: String,
-    r#type: Option<String>,
     window: Option<String>,
 }
 
@@ -43,10 +43,9 @@ pub async fn consumption(
 )
     -> Result<Json<Vec<Consumption>>, StatusCode>
 {
-    let ConsumptionQuery { start, end, r#type, window } = query;
+    let ConsumptionQuery { start, end, window } = query;
     let mut data: Vec<Consumption> = Vec::new();
 
-    let r#type: String = r#type.unwrap_or(String::from("IMPORT"));
     let window: String = window.unwrap_or(String::from("30m"));
 
     let Some(idx) = ["1d", "1h", "30m"].iter().position(|i| *i == &window) else {
@@ -61,45 +60,54 @@ pub async fn consumption(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let result = sqlx::query(
         "SELECT
-            strftime('%Y-%m-%dT00:00:00Z', r.valid_from), -- daily
-            strftime('%Y-%m-%dT%H:00:00Z', r.valid_from), -- hourly
-            r.valid_from,                                 -- half-hourly
+            strftime('%Y-%m-%dT00:00:00Z', i.valid_from), -- daily
+            strftime('%Y-%m-%dT%H:00:00Z', i.valid_from), -- hourly
+            i.valid_from,                                 -- half-hourly
 
             SUM(c.consumption),
             SUM(c.generation),
-            AVG(r.value),
-            SUM(c.consumption * r.value),
-            SUM(c.generation * r.value),
+            AVG(i.value),
+            AVG(e.value),
+            SUM(c.consumption * i.value),
+            SUM(c.generation * e.value),
             SUM(b.charge),
             SUM(b.discharge)
-        FROM tariff_rates as r
+        FROM tariff_rates as i
 
-        JOIN products as p
-          ON r.product_code = p.product_code
-         AND r.tariff_code = p.tariff_code
+        LEFT JOIN tariff_rates as e
+               ON i.valid_from = e.valid_from
 
         LEFT JOIN consumption as c
-               ON r.valid_from = c.interval_start
+               ON c.interval_start = i.valid_from
+
+        JOIN products as pi
+          ON i.product_code = pi.product_code
+         AND i.tariff_code = pi.tariff_code
+
+        JOIN products as pe
+          ON e.product_code = pe.product_code
+         AND e.tariff_code = pe.tariff_code
 
         LEFT JOIN charge as b
-               ON r.valid_from = b.start
+               ON i.valid_from = b.start
 
-        WHERE r.valid_from >= ? -- start
-          AND r.valid_from < ?  -- end
-          AND p.type = ?        -- type
+        WHERE i.valid_from >= ? -- start
+          AND i.valid_from < ?  -- end
+
+          AND pi.type = 'IMPORT'
+          AND pe.type = 'EXPORT'
 
         GROUP BY
             CASE ?              -- window
-              WHEN '1d' THEN date(r.valid_from)
-              WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', r.valid_from)
-              ELSE r.valid_from
+              WHEN '1d' THEN date(i.valid_from)
+              WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', i.valid_from)
+              ELSE i.valid_from
             END
 
-        ORDER BY r.valid_from ASC"
+        ORDER BY i.valid_from ASC"
     )
         .bind(&start)
         .bind(&end)
-        .bind(&r#type)
         .bind(&window)
         .fetch_all(&mut *conn)
         .await
@@ -118,11 +126,12 @@ pub async fn consumption(
                 })?,
             consumption: row.get(3),
             generation: row.get(4),
-            rate: row.get(5),
-            cost: row.get(6),
-            sale: row.get(7),
-            charge: row.get(8),
-            discharge: row.get(9),
+            import_rate: row.get(5),
+            export_rate: row.get(6),
+            cost: row.get(7),
+            sale: row.get(8),
+            charge: row.get(9),
+            discharge: row.get(10),
         };
         data.push(consumption);
     }
