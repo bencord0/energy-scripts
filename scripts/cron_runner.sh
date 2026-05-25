@@ -1,7 +1,7 @@
 #!/bin/bash
 set -ex
 
-if [[ test -e configuration.sh ]]; then
+if [[ -e configuration.sh ]]; then
     source config.sh
 fi
 
