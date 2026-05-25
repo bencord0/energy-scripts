@@ -14,12 +14,9 @@ use std::{
     fs,
     path,
 };
-use sqlx::{
-    sqlite::{
-        Sqlite,
-        SqliteConnection,
-    },
-    Row,
+use sqlx::sqlite::{
+    Sqlite,
+    SqliteConnection,
 };
 use power::{
     AppState,
@@ -27,6 +24,7 @@ use power::{
     dates::{
         dt2str,
     },
+    times::TimeRange,
 };
 
 #[derive(Parser, Debug)]
@@ -34,17 +32,28 @@ struct Args {
     #[arg(long)]
     serial: String,
 
+    #[arg(long)]
+    from: Option<String>,
+    #[arg(long)]
+    to: Option<String>,
+
     db: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let Args { serial, db } = Args::parse();
+    let Args { serial, from, to, db } = Args::parse();
 
     let fox = FoxESSClient::new()
         .api_key(env::var("FOXESS_API_KEY")?);
 
-    let response = fox.get_inverter_history(&serial).await?;
+    let timerange: Option<TimeRange> = if let (Some(from), Some(to)) = (from, to) {
+        Some(TimeRange::new_from_strs(&from, &to)?)
+    } else {
+        None
+    };
+
+    let response = fox.get_inverter_history(&serial, timerange).await?;
 
     let data_file = path::PathBuf::from(format!("data/generation-{serial}.json"));
     fs::write(&data_file, serde_json::to_vec_pretty(&response)?)?;

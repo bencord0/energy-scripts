@@ -7,7 +7,10 @@ use std::{
     collections::HashMap,
     time::Duration,
 };
-use crate::dates::str2dt;
+use crate::{
+    dates::str2dt,
+    times::TimeRange,
+};
 
 pub struct FoxESSClient {
     api_key: String,
@@ -25,16 +28,10 @@ impl FoxESSClient {
         self
     }
 
-    pub async fn get_inverter_history(&self, sn: &str)
-        -> Result<InverterHistory, Error>
-    {
-        let timestamp = Utc::now().timestamp_millis();
-        let path = "/op/v0/device/history/query";
-
-        let url = format!("https://www.foxesscloud.com{path}");
-
+    fn request_headers(&self, path: &str, timestamp: i64) -> Result<HeaderMap, Error> {
         let token = &self.api_key;
         let mut headers = HeaderMap::new();
+
         headers.insert("token", HeaderValue::from_str(&token)?);
         headers.insert("lang", HeaderValue::from_static("en"));
         headers.insert("timestamp", timestamp.into());
@@ -46,13 +43,27 @@ impl FoxESSClient {
             let hash = hasher.finalize();
             hex::encode(hash)
         };
-        eprintln!("signature: {}", signature);
         headers.insert("signature", HeaderValue::from_str(&signature)?);
 
-        eprintln!("headers: {:?}", headers);
+        Ok(headers)
+    }
+
+    pub async fn get_inverter_history(&self, sn: &str, timerange: Option<TimeRange>)
+        -> Result<InverterHistory, Error>
+    {
+        let path = "/op/v0/device/history/query";
+        let timestamp = Utc::now().timestamp_millis();
+
+        let url = format!("https://www.foxesscloud.com{path}");
+        let headers = self.request_headers(&path, timestamp.clone())?;
 
         let mut payload = HashMap::new();
-        payload.insert("sn", sn);
+        payload.insert("sn", sn.to_string());
+
+        if let Some(timerange) = timerange {
+            payload.insert("begin", timerange.start.timestamp_millis().to_string());
+            payload.insert("end", timerange.end.timestamp_millis().to_string());
+        }
 
         let response = reqwest::Client::new()
             .post(url)
@@ -75,7 +86,7 @@ impl FoxESSClient {
             .collect::<Vec<InverterHistoryResponseResultData>>()[0].clone();
 
         Ok(InverterHistory{
-            serial: result.deviceSN.clone(),
+            serial: result.device_sn.clone(),
             generation: Generation {
                 unit: generation_data.unit.ok_or_eyre("unit")?,
                 data: generation_data.data.into_iter().map(|d| GenerationData {
@@ -90,21 +101,22 @@ impl FoxESSClient {
 
 #[derive(Deserialize, Debug)]
 struct InverterHistoryResponse {
-    errno: u32,
-    msg: String,
+    //errno: u32,
+    //msg: String,
     result: Option<Vec<InverterHistoryResponseResult>>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 struct InverterHistoryResponseResult {
-    deviceSN: String,
+    #[serde(rename = "deviceSN")]
+    device_sn: String,
     datas: Vec<InverterHistoryResponseResultData>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 struct InverterHistoryResponseResultData {
     variable: String,
-    name: String,
+    //name: String,
     unit: Option<String>,
     data: Vec<InverterHistoryResponseResultDataItem>,
 }

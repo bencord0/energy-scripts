@@ -329,7 +329,7 @@ async function render() {
             Plot.tip(data, Plot.pointerX({
                 x: "timestamp",
                 y: d => {
-                    const up = Math.max(d.consumption || 0, d.charge || 0);
+                    const up = Math.max(d.consumption || 0, d.charge || 0, d.solar_generation || 0);
                     const down = Math.max(d.generation || 0, d.discharge || 0);
                     return up - down;
                 },
