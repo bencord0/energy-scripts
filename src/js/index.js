@@ -137,6 +137,7 @@ async function render() {
     // Compute dynamic Y-axis domain: always show at least 10 kWh / £1, but expand if data exceeds it
     const dataMaxY = Math.max(
         ...data.map(d => d.consumption || 0),
+        ...data.map(d => d.solar_generation || 0),
         ...usageRows.map(d => d.y2 || 0),
         ...data.map(d => (d.import_rate || 0) / scaleFactor),
     );
@@ -294,6 +295,14 @@ async function render() {
                 strokeDasharray: "5,1",
                 curve: "step-after",
             }),
+            // Solar Generation
+            Plot.lineY(data, {
+                x: 'timestamp',
+                y: 'solar_generation',
+                stroke: "rgba(255, 200, 0, 0.8)",
+                strokeWidth: 1,
+                curve: "step-after",
+            }),
             // AgilePredict - https://agilepredict.com/api_how_to
             Plot.lineY(pricePredictions, {
                 x: 'timestamp',
@@ -333,6 +342,7 @@ async function render() {
                     const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
                     return [
                         `Time: ${d3.timeFormat("%H:%M")(timestamp)}`,
+                        `Solar: ${(d.solar_generation || 0).toFixed(2)} kWh`,
                         `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
                         `Import Price: ${(d.import_rate || 0).toFixed(2)} p/kWh`,
                         `Import Cost: ${formatCost((d.cost || 0))}`,
@@ -422,6 +432,12 @@ async function render() {
     let effectiveSalePrice = totalSale / totalExported;
     if (!Number.isFinite(effectiveSalePrice)) effectiveSalePrice = 0;
 
+    // Calculate Solar Generation
+    const totalGenerated = data.reduce((sum, d) => sum + (d.solar_generation || 0), 0);
+
+    // Calculate Battery Charge/Discharge
+    const totalCharged = data.reduce((sum, d) => sum + (d.charge || 0), 0);
+    const totalDischarged = data.reduce((sum, d) => sum + (d.discharge || 0), 0);
 
     // Update Cost Summary Values in DOM
     const periodElem = document.getElementById('val-period');
@@ -466,6 +482,16 @@ async function render() {
     // Summary section
     const netCostElem = document.getElementById('val-net-cost');
     if (netCostElem) netCostElem.innerHTML = formatCost(netCost);
+
+    // Solar / Battery section
+    const solarGenElem = document.getElementById('val-solar-gen');
+    if (solarGenElem) solarGenElem.innerHTML = totalGenerated.toFixed(2);
+
+    const battChargedElem = document.getElementById('val-batt-charged');
+    if (battChargedElem) battChargedElem.innerHTML = totalCharged.toFixed(2);
+
+    const battDischargedElem = document.getElementById('val-batt-discharged');
+    if (battDischargedElem) battDischargedElem.innerHTML = totalDischarged.toFixed(2);
 
     // Update URL without refreshing (Debounced)
     updateUrl(startStr, endStr, timeWindow);
