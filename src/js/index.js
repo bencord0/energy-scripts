@@ -390,7 +390,7 @@ async function render() {
     const totalCost = usageCost + standingCharge;
 
     // Calculate total sale (export)
-    const totalSale = data.reduce((sum, d) => sum + (d.exportSale || 0), 0);
+    const totalSale = data.reduce((sum, d) => sum + (d.sale || 0), 0);
 
     // Calculate net cost
     const netCost = totalCost - totalSale;
@@ -424,8 +424,8 @@ async function render() {
     let avgPrice = 0;
     let avgSalePrice = 0;
     if (data.length > 0) {
-        avgPrice = data.reduce((sum, d) => sum + (d.rate || 0), 0) / data.length;
-        avgSalePrice = data.reduce((sum, d) => sum + (d.exportRate || 0), 0) / data.length;
+        avgPrice = data.reduce((sum, d) => sum + (d.import_rate || 0), 0) / data.length;
+        avgSalePrice = data.reduce((sum, d) => sum + (d.export_rate || 0), 0) / data.length;
     }
 
     // Calculate effective prices (averages that account for consumption)
