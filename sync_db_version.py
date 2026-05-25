@@ -25,6 +25,12 @@ def main():
             "INSERT OR REPLACE INTO versioning (key, value) VALUES ('version', ?)",
             (timestamp,)
         )
+
+
+    # 1a. Optimise the database
+    # https://www.sqlite.org/lang_analyze.html#automatically_running_analyze
+    with connection:
+        connection.execute("PRAGMA optimize=0x10002")
     connection.close()
 
     # 2. Update the JS file
