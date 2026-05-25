@@ -138,11 +138,13 @@ async function render() {
     const dataMaxY = Math.max(
         ...data.map(d => d.consumption || 0),
         ...data.map(d => d.solar_generation || 0),
+        ...data.map(d => d.charge || 0),
         ...usageRows.map(d => d.y2 || 0),
         ...data.map(d => (d.import_rate || 0) / scaleFactor),
     );
     const dataMinY = Math.max(
         ...data.map(d => d.generation || 0),
+        ...data.map(d => d.discharge || 0),
         ...data.map(d => (d.export_rate || 0) / scaleFactor),
     );
     const yMax = Math.max(maxKWh, dataMaxY * 1.05); // 5% headroom
