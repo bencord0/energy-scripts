@@ -119,7 +119,7 @@ async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
 
         CREATE TABLE IF NOT EXISTS agile_predictions (
             region        TEXT,
-            timestamp     TEXT, -- timestamp, use UTC date aritmetic
+            timestamp     TEXT, -- timestamp, use UTC date arithmetic
             prediction    REAL, -- predicted p/kWh
             PRIMARY KEY (region, timestamp)
 
