@@ -20,7 +20,8 @@ use crate::{
 pub struct Consumption {
     timestamp: DateTime<Utc>,
     consumption: f32,
-    generation: f32,
+    generation: f32, // rename as export
+    solar_generation: f32, // rename as generation
     import_rate: f32,
     export_rate: f32,
     cost: f32,
@@ -71,7 +72,8 @@ pub async fn consumption(
             SUM(c.consumption * i.value),
             SUM(c.generation * e.value),
             SUM(b.charge),
-            SUM(b.discharge)
+            SUM(b.discharge),
+            SUM(s.value)
         FROM tariff_rates as i
 
         LEFT JOIN tariff_rates as e
@@ -90,6 +92,9 @@ pub async fn consumption(
 
         LEFT JOIN charge as b
                ON i.valid_from = b.start
+
+        LEFT JOIN solar_generation as s
+               ON i.valid_from = s.timestamp
 
         WHERE i.valid_from >= ? -- start
           AND i.valid_from < ?  -- end
@@ -132,6 +137,7 @@ pub async fn consumption(
             sale: row.get(8),
             charge: row.get(9),
             discharge: row.get(10),
+            solar_generation: row.get(11),
         };
         data.push(consumption);
     }

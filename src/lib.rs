@@ -3,6 +3,7 @@ pub mod clients;
 pub mod api;
 pub mod dates;
 pub use app::AppState;
-pub use clients::OctopusClient;
 pub use clients::AgilePredictClient;
+pub use clients::FoxESSClient;
+pub use clients::OctopusClient;
 

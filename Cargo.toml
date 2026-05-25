@@ -12,7 +12,9 @@ axum = { version = "0.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6.1", features = ["derive"] }
 eyre = "0.6.12"
+hex = "0.4.3"
 log = "0.4.29"
+md-5 = "0.11.0"
 phf = { version = "0.13.1", features = ["macros"] }
 reqwest = { version = "0.13.3", features = ["json", "query"] }
 serde = { version = "1.0.228", features = ["derive"] }
