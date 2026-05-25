@@ -6,7 +6,7 @@ if [[ test -e configuration.sh ]]; then
 fi
 
 ./scripts/save_agile_tariff_A.sh
-./scripts/save_consumption.sh
+./scripts/save_consumption_data.sh
 ./scripts/save_battery_data.sh yesterday
 ./scripts/save_battery_data.sh today
 ./scripts/save_prediction_data.sh
