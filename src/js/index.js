@@ -308,7 +308,8 @@ async function render() {
             // Car Charge
             Plot.lineY(data, {
                 x: 'timestamp',
-                y: d => d.charge + d.car_charge, // visually stack ontop of battery charge
+                   // visually stack ontop of battery charge
+                y: d => d.car_charge > 0 ? d.charge + d.car_charge : 0,
                 stroke: "rgba(150, 10, 200, 0.4)",
                 strokeWidth: 1,
                 curve: "step-after",
