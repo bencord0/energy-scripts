@@ -8,7 +8,7 @@ function save_carcharge() {
     cargo run --bin save_carcharge_data -- \
         --username "${OHME_USERNAME}" \
         --password "${OHME_PASSWORD}" \
-        --user-id "${PHME_USER_ID}" \
+        --user-id  "${OHME_USER_ID}" \
         --from   "${FROM}" \
         --to     "${TO}" \
         data/power.sqlite3
