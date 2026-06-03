@@ -305,6 +305,14 @@ async function render() {
                 strokeWidth: 1,
                 curve: "step-after",
             }),
+            // Car Charge
+            Plot.lineY(data, {
+                x: 'timestamp',
+                y: d => d.charge + d.car_charge, // visually stack ontop of battery charge
+                stroke: "rgba(150, 10, 200, 0.4)",
+                strokeWidth: 1,
+                curve: "step-after",
+            }),
             // AgilePredict - https://agilepredict.com/api_how_to
             Plot.lineY(pricePredictions, {
                 x: 'timestamp',
@@ -350,6 +358,7 @@ async function render() {
                         `Import Cost: ${formatCost((d.cost || 0))}`,
                         `Battery Charge: ${(d.charge || 0).toFixed(2)} kWh`,
                         `Battery Disharge: ${(d.discharge || 0).toFixed(2)} kWh`,
+                        `Car Charge: ${(d.car_charge || 0).toFixed(2)} kWh`,
                         `Export: ${(d.generation || 0).toFixed(3)} kWh`,
                         `Export Price: ${(d.export_rate || 0).toFixed(2)} p/kWh`,
                         `Export Sale: ${formatCost((d.sale || 0))}`,
@@ -441,6 +450,9 @@ async function render() {
     const totalCharged = data.reduce((sum, d) => sum + (d.charge || 0), 0);
     const totalDischarged = data.reduce((sum, d) => sum + (d.discharge || 0), 0);
 
+    // Car Charging
+    const totalCarCharged = data.reduce((sum, d) => sum + (d.car_charge || 0), 0);
+
     // Update Cost Summary Values in DOM
     const periodElem = document.getElementById('val-period');
     if (periodElem) periodElem.textContent = period.toFixed(1);
@@ -494,6 +506,9 @@ async function render() {
 
     const battDischargedElem = document.getElementById('val-batt-discharged');
     if (battDischargedElem) battDischargedElem.innerHTML = totalDischarged.toFixed(2);
+
+    const carChargedElem = document.getElementById('val-car-charged');
+    if (carChargedElem) carChargedElem.innerHTML = totalCarCharged.toFixed(2);
 
     // Update URL without refreshing (Debounced)
     updateUrl(startStr, endStr, timeWindow);

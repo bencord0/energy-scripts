@@ -7,4 +7,4 @@ pub use app::AppState;
 pub use clients::AgilePredictClient;
 pub use clients::FoxESSClient;
 pub use clients::OctopusClient;
-
+pub use clients::OhmeClient;

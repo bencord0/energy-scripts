@@ -28,6 +28,7 @@ pub struct Consumption {
     sale: f32,
     charge: f32,
     discharge: f32,
+    car_charge: f32,
 }
 
 #[derive(Deserialize, Debug)]
@@ -73,7 +74,8 @@ pub async fn consumption(
             SUM(c.generation * e.value),
             SUM(b.charge),
             SUM(b.discharge),
-            SUM(s.value)
+            SUM(s.value),
+            SUM(v.charge)
         FROM tariff_rates as i
 
         LEFT JOIN tariff_rates as e
@@ -95,6 +97,9 @@ pub async fn consumption(
 
         LEFT JOIN solar_generation as s
                ON i.valid_from = s.timestamp
+
+        LEFT JOIN carcharge as v
+               ON i.valid_from = v.timestamp
 
         WHERE i.valid_from >= ? -- start
           AND i.valid_from < ?  -- end
@@ -138,6 +143,7 @@ pub async fn consumption(
             charge: row.get(9),
             discharge: row.get(10),
             solar_generation: row.get(11),
+            car_charge: row.get(12),
         };
         data.push(consumption);
     }

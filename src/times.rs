@@ -7,6 +7,7 @@ use crate::dates::{
 };
 use eyre::Error;
 
+#[derive(Debug)]
 pub struct TimeRange {
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,

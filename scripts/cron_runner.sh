@@ -11,6 +11,7 @@ fi
 ./scripts/save_battery_data.sh today
 ./scripts/save_prediction_data.sh
 ./scripts/save_generation_data.sh
+./scripts/save_carcharge_data.sh
 
 ./scripts/version_db.sh
 ./scripts/rsync_upload.sh
