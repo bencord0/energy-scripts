@@ -2,7 +2,7 @@ use chrono::{
     DateTime,
     Utc,
 };
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use eyre::Error;
 use std::{
     env,
@@ -41,6 +41,9 @@ struct Args {
     to: Option<String>,
 
     #[arg(long)]
+    r#type: TariffType,
+
+    #[arg(long)]
     force: Option<bool>,
 
     db: String,
@@ -48,7 +51,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let Args { account_id, mpan, serial, db, from, to, force } = Args::parse();
+    let Args { account_id, mpan, serial, db, from, to, r#type, force } = Args::parse();
 
     let octopus = OctopusClient::new()
         .api_key(env::var("OCTOPUS_API_KEY")?);
@@ -99,21 +102,39 @@ async fn main() -> Result<(), Error> {
             }
         }
 
-        print!("INSERT consumption for {account_id} at {interval_start}...");
-        if let Err(err) = sqlx::query::<Sqlite>(
-            "INSERT OR REPLACE INTO consumption(
-                account,
-                interval_start,
-                interval_end,
-                consumption)
-            VALUES($1, $2, $3, $4)"
-        )
+        let query: &'static str = match r#type {
+            TariffType::IMPORT => {
+                print!("INSERT consumption for {account_id} at {interval_start}...");
+                "INSERT INTO consumption(
+                        account,
+                        interval_start,
+                        interval_end,
+                        consumption)
+                 VALUES($1, $2, $3, $4)
+                 ON CONFLICT(account, interval_start)
+                 DO UPDATE SET consumption=excluded.consumption"
+            },
+            TariffType::EXPORT => {
+                print!("INSERT generation for {account_id} at {interval_start}...");
+                "INSERT INTO consumption(
+                        account,
+                        interval_start,
+                        interval_end,
+                        generation)
+                 VALUES($1, $2, $3, $4)
+                 ON CONFLICT(account, interval_start)
+                 DO UPDATE SET generation=excluded.generation"
+            },
+        };
+
+        if let Err(err) = sqlx::query::<Sqlite>(query)
             .bind(&account_id)
             .bind(dt2str(interval_start))
             .bind(dt2str(interval_end))
             .bind(consumption)
             .execute(&mut *conn)
-            .await {
+            .await
+        {
             println!(" ERR");
             return Err(err.into());
         } else {
@@ -166,4 +187,10 @@ async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
         .await?;
 
     Ok(())
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum TariffType {
+    IMPORT,
+    EXPORT,
 }
