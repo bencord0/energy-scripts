@@ -37,7 +37,21 @@ async fn main() -> Result<(), Error> {
     let Args { region, db } = Args::parse();
 
     let predictor = AgilePredictClient::new();
-    let predictions = predictor.get_prediction(&region).await?;
+    let predictions = {
+        let p = predictor.get_prediction(&region).await;
+
+        // Ignore timeout when the site is down
+        if let Err(ref e) = p {
+            if let Some(req_e) = e.downcast_ref::<reqwest::Error>() {
+                if req_e.is_timeout() {
+                    eprintln!("{:?}", e);
+                    std::process::exit(0);
+                }
+            }
+        }
+
+        p
+    }?;
 
     let data_file = PathBuf::from(format!("data/prediction-{region}.json"));
     fs::write(&data_file, serde_json::to_vec_pretty(&predictions)?)?;
