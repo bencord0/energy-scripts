@@ -16,6 +16,7 @@ except ImportError:
     UTC = timezone.utc
 
 parser = ArgumentParser()
+parser.add_argument("--octopus-account")
 parser.add_argument("--inverter-id", required=True)
 parser.add_argument("--date", required=True)
 parser.add_argument("--page")
@@ -34,6 +35,7 @@ class BearerAuth(AuthBase):
 
 def main():
     args = parser.parse_args()
+    octopus_account = args.octopus_account
     inverter = args.inverter_id
     date = args.date
     force = args.force
@@ -82,10 +84,17 @@ def main():
             datum_time = str2dt(datum["time"])
             curr_time = dt2str(datum_time)
 
-            prev_charge_total = prev["today"]["battery"]["charge"]
-            curr_charge_total = datum["today"]["battery"]["charge"]
-            prev_discharge_total = prev["today"]["battery"]["discharge"]
+            # Need to use daily numbers, as 'total' is corrupt
+            prev_charge_total    = prev ["today"]["battery"]["charge"]
+            curr_charge_total    = datum["today"]["battery"]["charge"]
+            prev_discharge_total = prev ["today"]["battery"]["discharge"]
             curr_discharge_total = datum["today"]["battery"]["discharge"]
+
+            # Totals are more reliable as they don't reset daily.
+            prev_import_total = prev ["total"]["grid"]["import"]
+            curr_import_total = datum["total"]["grid"]["import"]
+            prev_export_total = prev ["total"]["grid"]["export"]
+            curr_export_total = datum["total"]["grid"]["export"]
 
             # Store raw values
             # These may be sampled more frequently than once a minute, but
@@ -96,6 +105,13 @@ def main():
                    VALUES(?, ?, ?, ?)
                 """,
                 (inverter, curr_time, curr_charge_total, curr_discharge_total),
+            )
+            connection.execute(
+                """INSERT OR REPLACE INTO battery_grid_totals
+                   (inverter, timestamp, import, export)
+                   VALUES(?, ?, ?, ?)
+                """,
+                (inverter, curr_time, curr_import_total, curr_export_total),
             )
 
             # We care about storing data for energy in 30-minute intervals
@@ -114,6 +130,9 @@ def main():
             if detect_reset(prev_discharge_total, curr_discharge_total):
                 discharge = curr_discharge_total
 
+            grid_import = curr_import_total - prev_import_total
+            grid_export = curr_export_total - prev_export_total
+
             print(f"INSERT charge for {inverter} at {start}: charge={charge:.02f} discharge={discharge:.02f}")
 
             connection.execute(
@@ -128,6 +147,22 @@ def main():
                """,
                 (inverter, starttime, endtime, charge, discharge),
              )
+
+            if octopus_account:
+                print(f"INSERT grid for {inverter} at {start}: import={grid_import:.02f} export={grid_export:.02f}")
+                connection.execute(
+                    """INSERT OR REPLACE INTO
+                       consumption(
+                           account,
+                           interval_start,
+                           interval_end,
+                           consumption,
+                           generation)
+                       VALUES(?, ?, ?, ?, ?)
+                   """,
+                    (octopus_account, starttime, endtime, grid_import, grid_export),
+                 )
+
 
             prev = datum
             start = end
@@ -152,6 +187,15 @@ def migrate_db(connection):
                 PRIMARY KEY (inverter, timestamp)
             );
             CREATE INDEX IF NOT EXISTS battery_daily_totals_timestamp ON battery_daily_totals(timestamp);
+
+            CREATE TABLE IF NOT EXISTS battery_grid_totals (
+                inverter    TEXT,
+                timestamp   TEXT,
+                import      REAL,
+                export      REAL,
+                PRIMARY KEY (inverter, timestamp)
+            );
+            CREATE INDEX IF NOT EXISTS battery_grid_totals_timestamp ON battery_grid_totals(timestamp);
 
             CREATE TABLE IF NOT EXISTS charge (
                 inverter  TEXT,
