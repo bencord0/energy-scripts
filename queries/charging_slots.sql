@@ -32,10 +32,27 @@ SELECT * FROM raw_slots
     -- Draw a cutoff and filter out expensive slots after N rows.
     LIMIT (SELECT FLOOR(COUNT(*) / $GRANULARITY) FROM raw_slots);
 
+-- Always include cheap / negative slots
+INSERT INTO import_slots(valid_from, valid_to, value)
+    SELECT
+        r.valid_from,
+        r.valid_to,
+        r.value
+    FROM tariff_rates AS r
+    JOIN products AS p
+    ON
+        r.product_code = p.product_code
+        AND r.tariff_code = p.tariff_code
+    WHERE
+        r.valid_from > $FROM_DATE
+        AND r.value <= 0
+        AND p.type = 'IMPORT';
+
 -- Re-order back in chronological order
+-- Deduplicate as needed
 CREATE TEMPORARY TABLE charging_slots AS
 WITH ordered_slots AS (
-    SELECT valid_from, valid_to, value
+    SELECT DISTINCT valid_from, valid_to, value
     FROM import_slots
     ORDER BY valid_from
 ),
