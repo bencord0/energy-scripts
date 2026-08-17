@@ -22,6 +22,8 @@ WITH export_slots AS (
         AND r.value > $FIXED_EXPORT_BARRIER
         AND r.valid_from NOT IN (SELECT valid_from FROM import_slots)
         AND r.valid_from > (SELECT MAX(valid_to) FROM charging_slots)
+    ORDER BY r.value DESC
+    LIMIT 4
 ),
 
 -- Find gaps between the slots, and mark the discontinuities
