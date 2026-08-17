@@ -8,7 +8,7 @@ use sqlx::sqlite::SqliteConnection;
 use power::{
     AppState,
     OhmeClient,
-    migrate,
+    migrate::{self, SqlType::{Real, Text}},
     dates::dt2str,
     times::TimeRange,
 };
@@ -100,5 +100,14 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    migrate::require_columns(conn, "carcharge", &["id", "timestamp", "charge"]).await
+    migrate::require_columns(
+        conn,
+        "carcharge",
+        &[
+            ("id", Text),
+            ("timestamp", Text),
+            ("charge", Real),
+        ],
+    )
+    .await
 }

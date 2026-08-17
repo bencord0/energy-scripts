@@ -97,26 +97,54 @@ pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
     Ok(())
 }
 
-/// Assert `table` exists and carries every column in `columns`. Used by each binary's
-/// `check_db()` to fail fast (non-zero exit) against a database that hasn't been migrated.
+/// Declared SQLite column type, as it appears in `CREATE TABLE`. Compared
+/// case-insensitively against `pragma_table_info.type`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SqlType {
+    Text,
+    Real,
+    Integer,
+}
+
+impl SqlType {
+    fn matches(self, declared: &str) -> bool {
+        let declared = declared.trim();
+        match self {
+            SqlType::Text => declared.eq_ignore_ascii_case("TEXT"),
+            SqlType::Real => declared.eq_ignore_ascii_case("REAL"),
+            SqlType::Integer => declared.eq_ignore_ascii_case("INTEGER"),
+        }
+    }
+}
+
+/// Assert `table` exists and carries every `(name, type)` in `columns`. Used by each
+/// binary's `check_db()` to fail fast (non-zero exit) against a database that hasn't
+/// been migrated or has drifted to a mis-typed schema.
 pub async fn require_columns(
     conn: &mut SqliteConnection,
     table: &str,
-    columns: &[&str],
+    columns: &[(&str, SqlType)],
 ) -> Result<(), Error> {
     let present = table_columns(conn, table).await?;
     if present.is_empty() {
         return Err(eyre!("missing table `{table}`; run the migrate-db binary"));
     }
 
-    let missing: Vec<&&str> = columns
-        .iter()
-        .filter(|c| !present.iter().any(|p| p == *c))
-        .collect();
-    if !missing.is_empty() {
-        return Err(eyre!(
-            "table `{table}` missing columns {missing:?}; run the migrate-db binary"
-        ));
+    for (name, expected) in columns {
+        match present.iter().find(|(n, _)| n == name) {
+            None => {
+                return Err(eyre!(
+                    "table `{table}` missing column `{name}`; run the migrate-db binary"
+                ));
+            }
+            Some((_, declared)) if !expected.matches(declared) => {
+                return Err(eyre!(
+                    "table `{table}` column `{name}` has type `{declared}`, \
+                     expected {expected:?}; run the migrate-db binary"
+                ));
+            }
+            Some(_) => {}
+        }
     }
 
     Ok(())
@@ -129,7 +157,7 @@ async fn rename_column_if_present(
     to: &str,
 ) -> Result<(), Error> {
     let cols = table_columns(conn, table).await?;
-    if cols.iter().any(|c| c == from) && !cols.iter().any(|c| c == to) {
+    if cols.iter().any(|(n, _)| n == from) && !cols.iter().any(|(n, _)| n == to) {
         sqlx::query(&format!(
             "ALTER TABLE {table} RENAME COLUMN {from} TO {to}"
         ))
@@ -145,7 +173,7 @@ async fn add_column_if_missing(
     column: &str,
     decl: &str,
 ) -> Result<(), Error> {
-    if !table_columns(conn, table).await?.iter().any(|c| c == column) {
+    if !table_columns(conn, table).await?.iter().any(|(n, _)| n == column) {
         sqlx::query(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"))
             .execute(&mut *conn)
             .await?;
@@ -153,12 +181,15 @@ async fn add_column_if_missing(
     Ok(())
 }
 
-/// Column names of `table`, empty if it doesn't exist. `table` is string-interpolated (it's an
-/// internal constant, never user input), which sidesteps bound-parameter quirks with the
-/// table-valued `pragma_table_info` function.
-async fn table_columns(conn: &mut SqliteConnection, table: &str) -> Result<Vec<String>, Error> {
-    let cols = sqlx::query_scalar::<_, String>(&format!(
-        "SELECT name FROM pragma_table_info('{table}')"
+/// `(name, type)` of each column in `table`, empty if it doesn't exist. `table` is
+/// string-interpolated (it's an internal constant, never user input), which sidesteps
+/// bound-parameter quirks with the table-valued `pragma_table_info` function.
+async fn table_columns(
+    conn: &mut SqliteConnection,
+    table: &str,
+) -> Result<Vec<(String, String)>, Error> {
+    let cols = sqlx::query_as::<_, (String, String)>(&format!(
+        "SELECT name, type FROM pragma_table_info('{table}')"
     ))
     .fetch_all(&mut *conn)
     .await?;
@@ -205,7 +236,7 @@ mod tests {
         migrate(&mut conn).await?;
 
         let cols = table_columns(&mut conn, "agile_predictions").await?;
-        assert!(cols.iter().any(|c| c == "export_prediction"));
+        assert!(cols.iter().any(|(n, _)| n == "export_prediction"));
         Ok(())
     }
 
@@ -224,8 +255,8 @@ mod tests {
         migrate(&mut conn).await?;
 
         let cols = table_columns(&mut conn, "agile_predictions").await?;
-        assert!(cols.iter().any(|c| c == "import_prediction"));
-        assert!(!cols.iter().any(|c| c == "prediction"));
+        assert!(cols.iter().any(|(n, _)| n == "import_prediction"));
+        assert!(!cols.iter().any(|(n, _)| n == "prediction"));
         Ok(())
     }
 
@@ -234,12 +265,38 @@ mod tests {
         let mut conn = memory_db().await;
 
         // Missing table before migration.
-        assert!(require_columns(&mut conn, "carcharge", &["id"]).await.is_err());
+        assert!(
+            require_columns(&mut conn, "carcharge", &[("id", SqlType::Text)])
+                .await
+                .is_err()
+        );
 
         migrate(&mut conn).await?;
 
-        require_columns(&mut conn, "carcharge", &["id", "timestamp", "charge"]).await?;
-        assert!(require_columns(&mut conn, "carcharge", &["nope"]).await.is_err());
+        require_columns(
+            &mut conn,
+            "carcharge",
+            &[
+                ("id", SqlType::Text),
+                ("timestamp", SqlType::Text),
+                ("charge", SqlType::Real),
+            ],
+        )
+        .await?;
+
+        // Missing column.
+        assert!(
+            require_columns(&mut conn, "carcharge", &[("nope", SqlType::Text)])
+                .await
+                .is_err()
+        );
+
+        // Present column, wrong declared type.
+        assert!(
+            require_columns(&mut conn, "carcharge", &[("charge", SqlType::Text)])
+                .await
+                .is_err()
+        );
         Ok(())
     }
 }

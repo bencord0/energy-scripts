@@ -19,7 +19,7 @@ use sqlx::{
 use power::{
     AppState,
     OctopusClient,
-    migrate,
+    migrate::{self, SqlType::{Real, Text}},
     clients::octopus::Consumption,
     dates::{
         dt2str,
@@ -168,8 +168,15 @@ async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
     migrate::require_columns(
         conn,
         "consumption",
-        &["account", "interval_start", "interval_end", "consumption", "generation"],
-    ).await
+        &[
+            ("account", Text),
+            ("interval_start", Text),
+            ("interval_end", Text),
+            ("consumption", Real),
+            ("generation", Real),
+        ],
+    )
+    .await
 }
 
 #[derive(Clone, Debug, ValueEnum)]

@@ -20,7 +20,7 @@ use power::{
     AppState,
     AgilePredictClient,
     clients::AgilePrediction,
-    migrate,
+    migrate::{self, SqlType::{Real, Text}},
     dates::{
         dt2str,
         str2dt,
@@ -157,14 +157,25 @@ async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
     migrate::require_columns(
         conn,
         "agile_predictions",
-        &["region", "timestamp", "import_prediction", "export_prediction"],
-    ).await?;
+        &[
+            ("region", Text),
+            ("timestamp", Text),
+            ("import_prediction", Real),
+            ("export_prediction", Real),
+        ],
+    )
+    .await?;
     // last_interval reads tariff_rates, populated by the save_tariff_rates binary.
     migrate::require_columns(
         conn,
         "tariff_rates",
-        &["product_code", "tariff_code", "valid_from"],
-    ).await
+        &[
+            ("product_code", Text),
+            ("tariff_code", Text),
+            ("valid_from", Text),
+        ],
+    )
+    .await
 }
 
 #[cfg(test)]

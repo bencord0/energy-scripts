@@ -18,7 +18,7 @@ use sqlx::sqlite::SqliteConnection;
 use power::{
     AppState,
     FoxESSClient,
-    migrate,
+    migrate::{self, SqlType::{Real, Text}},
     dates::{
         dt2str,
     },
@@ -124,6 +124,24 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    migrate::require_columns(conn, "solar_generation_totals", &["serial", "timestamp", "value"]).await?;
-    migrate::require_columns(conn, "solar_generation", &["serial", "timestamp", "value"]).await
+    migrate::require_columns(
+        conn,
+        "solar_generation_totals",
+        &[
+            ("serial", Text),
+            ("timestamp", Text),
+            ("value", Real),
+        ],
+    )
+    .await?;
+    migrate::require_columns(
+        conn,
+        "solar_generation",
+        &[
+            ("serial", Text),
+            ("timestamp", Text),
+            ("value", Real),
+        ],
+    )
+    .await
 }

@@ -33,7 +33,7 @@ struct Args {
 use power::{
     AppState,
     OctopusClient,
-    migrate,
+    migrate::{self, SqlType::{Real, Text}},
     dates::{
         dt2str,
         str2dt,
@@ -145,13 +145,27 @@ async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
     migrate::require_columns(
         conn,
         "products",
-        &["product_code", "tariff_code", "type", "standing_charge"],
-    ).await?;
+        &[
+            ("product_code", Text),
+            ("tariff_code", Text),
+            ("type", Text),
+            ("standing_charge", Real),
+        ],
+    )
+    .await?;
     migrate::require_columns(
         conn,
         "tariff_rates",
-        &["product_code", "tariff_code", "valid_from", "valid_to", "value", "daily_standing_charge"],
-    ).await
+        &[
+            ("product_code", Text),
+            ("tariff_code", Text),
+            ("valid_from", Text),
+            ("valid_to", Text),
+            ("value", Real),
+            ("daily_standing_charge", Real),
+        ],
+    )
+    .await
 }
 
 async fn last_interval(
