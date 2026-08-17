@@ -408,6 +408,7 @@
     }
   },
   "dual_register_electricity_tariffs": {},
+  "four_rate_ev_electricity_tariffs": {},
   "single_register_gas_tariffs": {},
   "sample_quotes": {
     "_A": {
