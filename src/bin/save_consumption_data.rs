@@ -19,6 +19,7 @@ use sqlx::{
 use power::{
     AppState,
     OctopusClient,
+    migrate,
     clients::octopus::Consumption,
     dates::{
         dt2str,
@@ -86,9 +87,8 @@ async fn main() -> Result<(), Error> {
 
     let app = AppState::connect(&db)?;
     let mut conn = app.acquire_sqlite().await?;
+    check_db(&mut conn).await?;
     let _ = app.acquire_pg().await?;
-
-    migrate_db(&mut conn).await?;
     let interval = last_interval(&mut conn).await;
 
     for data in consumption_data.results {
@@ -164,29 +164,12 @@ async fn last_interval(conn: &mut SqliteConnection) -> Result<DateTime<Utc>, Err
     Ok(last_interval)
 }
 
-async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    sqlx::query::<Sqlite>(
-        "BEGIN;
-
-        CREATE TABLE IF NOT EXISTS consumption (
-            account        TEXT,
-            interval_start TEXT, -- timestamp, use UTC date aritmetic
-            interval_end   TEXT, -- timestamp, use UTC date aritmetic
-            consumption    REAL, -- If precision is needed, use a TEXT field and integer arithmetic
-            generation     REAL,
-            PRIMARY KEY (account, interval_start)
-
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_consumption_start
-            ON consumption(interval_start);
-
-        COMMIT;"
-    )
-        .execute(&mut *conn)
-        .await?;
-
-    Ok(())
+async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
+    migrate::require_columns(
+        conn,
+        "consumption",
+        &["account", "interval_start", "interval_end", "consumption", "generation"],
+    ).await
 }
 
 #[derive(Clone, Debug, ValueEnum)]

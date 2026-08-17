@@ -2,6 +2,7 @@ mod app;
 pub mod clients;
 pub mod api;
 pub mod dates;
+pub mod migrate;
 pub mod times;
 pub use app::AppState;
 pub use clients::AgilePredictClient;

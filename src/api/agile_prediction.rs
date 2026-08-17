@@ -12,7 +12,8 @@ use crate::AppState;
 #[derive(Serialize,Debug)]
 pub struct AgilePrediction {
     timestamp: String,
-    prediction: f32,
+    import_prediction: Option<f32>,
+    export_prediction: Option<f32>,
 }
 
 #[derive(Deserialize,Debug)]
@@ -48,7 +49,8 @@ pub async fn agile_prediction(
             strftime('%Y-%m-%dT00:00:00Z', timestamp), -- 1d
             strftime('%Y-%m-%dT%H:00:00Z', timestamp), -- 1h
             timestamp,                                 -- 30m
-            AVG(prediction)
+            AVG(import_prediction),
+            AVG(export_prediction)
 
         FROM agile_predictions
 
@@ -79,7 +81,8 @@ pub async fn agile_prediction(
     for row in result {
         let p = AgilePrediction {
             timestamp: row.get(idx),
-            prediction: row.get(3),
+            import_prediction: row.get(3),
+            export_prediction: row.get(4),
         };
         data.push(p);
     }

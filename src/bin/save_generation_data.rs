@@ -14,13 +14,11 @@ use std::{
     fs,
     path,
 };
-use sqlx::sqlite::{
-    Sqlite,
-    SqliteConnection,
-};
+use sqlx::sqlite::SqliteConnection;
 use power::{
     AppState,
     FoxESSClient,
+    migrate,
     dates::{
         dt2str,
     },
@@ -44,8 +42,10 @@ struct Args {
 async fn main() -> Result<(), Error> {
     let Args { serial, from, to, db } = Args::parse();
 
-    let fox = FoxESSClient::new()
-        .api_key(env::var("FOXESS_API_KEY")?);
+    let app = AppState::connect(&db)?;
+    let mut conn = app.acquire_sqlite().await?;
+    check_db(&mut conn).await?;
+    let _ = app.acquire_pg().await?;
 
     let timerange: Option<TimeRange> = if let (Some(from), Some(to)) = (from, to) {
         Some(TimeRange::new_from_strs(&from, &to)?)
@@ -53,16 +53,13 @@ async fn main() -> Result<(), Error> {
         None
     };
 
+    let fox = FoxESSClient::new()
+        .api_key(env::var("FOXESS_API_KEY")?);
+
     let response = fox.get_inverter_history(&serial, timerange).await?;
 
     let data_file = path::PathBuf::from(format!("data/generation-{serial}.json"));
     fs::write(&data_file, serde_json::to_vec_pretty(&response)?)?;
-
-    let app = AppState::connect(&db)?;
-    let mut conn = app.acquire_sqlite().await?;
-    let _ = app.acquire_pg().await?;
-
-    migrate_db(&mut conn).await?;
 
     let generation = &response.generation;
 
@@ -126,31 +123,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    sqlx::query::<Sqlite>(
-        "BEGIN;
-
-        CREATE TABLE IF NOT EXISTS solar_generation_totals (
-            serial    TEXT,
-            timestamp TEXT, -- timestamp, use UTC date arithmetic
-            value     REAL, -- Raw cumulative value
-            PRIMARY KEY (serial, timestamp)
-        );
-
-        CREATE TABLE IF NOT EXISTS solar_generation (
-            serial    TEXT,
-            timestamp TEXT, -- timestamp, use UTC date arithmetic
-            value     REAL, -- actual kWh
-            PRIMARY KEY (serial, timestamp)
-        );
-
-        CREATE INDEX IF NOT EXISTS solar_generation_timestamp ON
-            solar_generation(timestamp);
-
-        COMMIT;"
-    )
-        .execute(&mut *conn)
-        .await?;
-
-    Ok(())
+async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
+    migrate::require_columns(conn, "solar_generation_totals", &["serial", "timestamp", "value"]).await?;
+    migrate::require_columns(conn, "solar_generation", &["serial", "timestamp", "value"]).await
 }

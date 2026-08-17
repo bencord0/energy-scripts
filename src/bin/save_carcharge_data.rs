@@ -4,13 +4,11 @@ use eyre::{Error, OptionExt};
 use std::{
     path,
 };
-use sqlx::sqlite::{
-    Sqlite,
-    SqliteConnection,
-};
+use sqlx::sqlite::SqliteConnection;
 use power::{
     AppState,
     OhmeClient,
+    migrate,
     dates::dt2str,
     times::TimeRange,
 };
@@ -43,9 +41,8 @@ async fn main() -> Result<(), Error> {
 
     let app = AppState::connect(&db)?;
     let mut conn = app.acquire_sqlite().await?;
+    check_db(&mut conn).await?;
     let _ = app.acquire_pg().await?;
-
-    migrate_db(&mut conn).await?;
 
     let mut client = OhmeClient::new()
         .authenticate(&username, &password);
@@ -102,23 +99,6 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    sqlx::query::<Sqlite>(
-        "BEGIN;
-
-        CREATE TABLE IF NOT EXISTS carcharge (
-            id        TEXT,
-            timestamp TEXT, -- use UTC date arithmetic
-            charge    REAL, -- kWh
-            PRIMARY KEY (id, timestamp)
-        );
-
-        CREATE INDEX IF NOT EXISTS carcharge_timestamp ON carcharge(timestamp);
-
-        COMMIT;"
-    )
-        .execute(&mut *conn)
-        .await?;
-
-    Ok(())
+async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
+    migrate::require_columns(conn, "carcharge", &["id", "timestamp", "charge"]).await
 }

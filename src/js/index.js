@@ -320,8 +320,15 @@ async function render() {
             // AgilePredict - https://agilepredict.com/api_how_to
             Plot.lineY(pricePredictions, {
                 x: 'timestamp',
-                y: d => d.prediction / scaleFactor,
-                stroke: "rgba(50, 50, 50, 0.8)",
+                y: d => d.import_prediction / scaleFactor,
+                stroke: "rgba(50, 50, 50, 0.4)",
+                strokeWidth: 1,
+                curve: "step-after",
+            }),
+            Plot.lineY(pricePredictions, {
+                x: 'timestamp',
+                y: d => -d.export_prediction / scaleFactor,
+                stroke: "rgba(50, 50, 50, 0.4)",
                 strokeWidth: 1,
                 curve: "step-after",
             }),

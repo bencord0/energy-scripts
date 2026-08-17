@@ -33,6 +33,7 @@ struct Args {
 use power::{
     AppState,
     OctopusClient,
+    migrate,
     dates::{
         dt2str,
         str2dt,
@@ -79,9 +80,8 @@ async fn main() -> Result<(), Error> {
     // Persist to database
     let app = AppState::connect(&db)?;
     let mut conn = app.acquire_sqlite().await?;
+    check_db(&mut conn).await?;
     let _ = app.acquire_pg().await?;
-
-    migrate_db(&mut conn).await?;
     let interval = last_interval(&mut conn, &product_code, &tariff_code).await?;
 
     let mut standing_charge: f32 = 0.0;
@@ -141,34 +141,17 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn migrate_db(conn: &mut SqliteConnection) -> Result<(), Error> {
-    sqlx::query::<Sqlite>(
-        "BEGIN;
-
-        CREATE TABLE IF NOT EXISTS products (
-            product_code TEXT NOT NULL,
-            tariff_code  TEXT NOT NULL,
-            type         TEXT NOT NULL, -- IMPORT or EXPORT
-            standing_charge REAL,
-            PRIMARY KEY (product_code, tariff_code)
-        );
-
-        CREATE TABLE IF NOT EXISTS tariff_rates (
-            product_code TEXT NOT NULL,
-            tariff_code  TEXT NOT NULL, -- per-region tariff code
-            valid_from   TEXT NOT NULL, -- timestamp, use UTC date aritmetic
-            valid_to     TEXT,          -- timestamp, use UTC date arithmetic
-            value        REAL,          -- If precision is needed, use a TEXT field and integer arithmetic
-            daily_standing_charge REAL,
-            PRIMARY KEY (product_code, tariff_code, valid_from)
-        );
-
-        COMMIT;"
-    )
-        .execute(&mut *conn)
-        .await?;
-
-    Ok(())
+async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
+    migrate::require_columns(
+        conn,
+        "products",
+        &["product_code", "tariff_code", "type", "standing_charge"],
+    ).await?;
+    migrate::require_columns(
+        conn,
+        "tariff_rates",
+        &["product_code", "tariff_code", "valid_from", "valid_to", "value", "daily_standing_charge"],
+    ).await
 }
 
 async fn last_interval(

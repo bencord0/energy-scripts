@@ -5,6 +5,7 @@ if [[ -e config.sh ]]; then
     source config.sh
 fi
 
+cargo run --bin migrate-db
 ./scripts/save_agile_tariff_A.sh
 ./scripts/save_consumption_data.sh
 ./scripts/save_battery_data.sh yesterday
