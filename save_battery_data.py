@@ -3,6 +3,7 @@ import json
 import os
 import requests
 import sqlite3
+import sys
 from argparse import ArgumentParser
 from datetime import datetime, timedelta
 from requests.auth import AuthBase
@@ -50,15 +51,19 @@ def main():
         if page_size := args.page_size:
             params["pageSize"] = page_size
 
-        response = requests.get(
-            url,
-            params=params,
-            auth=BearerAuth(),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-        )
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                auth=BearerAuth(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+            )
+        except requests.exceptions.SSLError as e:
+            print("SSL error on connection: api.givenergy.cloud")
+            sys.exit(0)
 
         data = response.json()["data"]
         with data_file.open("w") as df:
