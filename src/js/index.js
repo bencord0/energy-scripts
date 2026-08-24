@@ -143,12 +143,14 @@ async function render() {
         ...usageRows.map(d => d.y2 || 0),
         ...data.map(d => d.cost / scaleFactor || 0),
         ...data.map(d => d.import_rate / scaleFactor || 0),
+        ...pricePredictions.map(d => d.import_prediction / scaleFactor || 0),
     );
     const dataMinY = Math.max(
         ...data.map(d => d.generation || 0),
         ...data.map(d => d.discharge || 0),
         ...data.map(d => d.sale / scaleFactor || 0),
         ...data.map(d => d.export_rate / scaleFactor || 0),
+        ...pricePredictions.map(d => d.export_prediction / scaleFactor || 0),
     );
     const yMax = Math.max(maxKWh, dataMaxY * 1.05); // 5% headroom
     const yMin = Math.max(0, dataMinY * 1.05);
