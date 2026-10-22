@@ -18,7 +18,7 @@ except ImportError:
 
 parser = ArgumentParser()
 parser.add_argument("--octopus-account")
-parser.add_argument("--inverter-id", required=True)
+parser.add_argument("--inverter-ids", required=True)
 parser.add_argument("--date", required=True)
 parser.add_argument("--page")
 parser.add_argument("--page-size", default=10000)
@@ -37,18 +37,26 @@ class BearerAuth(AuthBase):
 def main():
     args = parser.parse_args()
     octopus_account = args.octopus_account
-    inverter = args.inverter_id
+    inverters = args.inverter_ids.split(',')
     date = args.date
     force = args.force
+    page = args.page
+    page_size = args.page_size
 
-    data_file = Path(f"data/inverter-{args.inverter_id}-{args.date}.json")
+    for inverter in inverters:
+        data = fetch_inverter_data(date, inverter, force, page, page_size)
+        save_inverter_data(args.db, octopus_account, inverter, data)
+
+
+def fetch_inverter_data(date, inverter, force, page, page_size):
+    data_file = Path(f"data/inverter-{inverter}-{date}.json")
 
     if force or not data_file.exists():
         url = f"https://api.givenergy.cloud/v1/inverter/{inverter}/data-points/{date}"
         params = {}
-        if page := args.page:
+        if page:
             params["page"] = page
-        if page_size := args.page_size:
+        if page_size:
             params["pageSize"] = page_size
 
         try:
@@ -72,7 +80,10 @@ def main():
         with data_file.open() as df:
             data = json.loads(df.read())
 
-    connection = connect_db(args.db)
+    return data
+
+def save_inverter_data(db, octopus_account, inverter, data):
+    connection = connect_db(db)
     migrate_db(connection)
 
     with connection:

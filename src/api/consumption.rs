@@ -66,12 +66,12 @@ pub async fn consumption(
             strftime('%Y-%m-%dT%H:00:00Z', i.valid_from), -- hourly
             i.valid_from,                                 -- half-hourly
 
-            SUM(c.consumption),
-            SUM(c.generation),
+            MAX(c.consumption),
+            MAX(c.generation),
             AVG(i.value),
             AVG(e.value),
-            SUM(c.consumption * i.value),
-            SUM(c.generation * e.value),
+            MAX(c.consumption * i.value),
+            MAX(c.generation * e.value),
             SUM(b.charge),
             SUM(b.discharge),
             SUM(s.value),
