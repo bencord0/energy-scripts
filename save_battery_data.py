@@ -83,6 +83,9 @@ def fetch_inverter_data(date, inverter, force, page, page_size):
     return data
 
 def save_inverter_data(db, octopus_account, inverter, data):
+    if len(data) < 1:
+        return
+
     connection = connect_db(db)
     migrate_db(connection)
 
