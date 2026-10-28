@@ -65,6 +65,48 @@ const V1_SCHEMA: &str = "BEGIN;
 
     COMMIT;";
 
+// Version 4
+const V4_SCHEMA: &str = "BEGIN;
+
+    CREATE TABLE IF NOT EXISTS battery_daily_totals (
+        inverter    TEXT,
+        timestamp   TEXT, -- UTC timestamp when data was read
+        charge      REAL, -- Raw cumulative value from inverter's \"today.battery.charge\"
+        discharge   REAL, -- Raw cumulative value from inverter's \"today.battery.discharge\"
+        PRIMARY KEY (inverter, timestamp)
+    );
+    CREATE INDEX IF NOT EXISTS battery_daily_totals_timestamp ON battery_daily_totals(timestamp);
+
+    CREATE TABLE IF NOT EXISTS battery_grid_totals (
+        inverter    TEXT,
+        timestamp   TEXT,
+        import      REAL,
+        export      REAL,
+        PRIMARY KEY (inverter, timestamp)
+    );
+    CREATE INDEX IF NOT EXISTS battery_grid_totals_timestamp ON battery_grid_totals(timestamp);
+
+    CREATE TABLE IF NOT EXISTS charge (
+        inverter  TEXT,
+        start     TEXT, -- timestamp, use UTC date arithmetic
+        end       TEXT, -- timestamp, use UTC date arithmetic
+        charge    REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
+        discharge REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
+        PRIMARY KEY (inverter, start)
+    );
+    CREATE INDEX IF NOT EXISTS charge_start ON charge(start);
+
+    COMMIT;";
+
+// Version 5
+//
+// Cache-busting marker read by the frontend.
+const V5_SCHEMA: &str = "
+    CREATE TABLE IF NOT EXISTS versioning (
+        key   TEXT PRIMARY KEY,
+        value TEXT
+    );";
+
 pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
     let mut version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&mut *conn)
@@ -86,8 +128,18 @@ pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
         version = 3;
     }
 
+    if version < 4 {
+        sqlx::query::<Sqlite>(V4_SCHEMA).execute(&mut *conn).await?;
+        version = 4;
+    }
+
+    if version < 5 {
+        sqlx::query::<Sqlite>(V5_SCHEMA).execute(&mut *conn).await?;
+        version = 5;
+    }
+
     // Next migration step goes here:
-    // if version < 4 { ...; version = 4; }
+    // if version < 6 { ...; version = 6; }
 
     // PRAGMA can't take bind params; `version` is an internal constant.
     sqlx::query(&format!("PRAGMA user_version = {version}"))
@@ -216,7 +268,7 @@ mod tests {
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut conn)
             .await?;
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
         Ok(())
     }
 

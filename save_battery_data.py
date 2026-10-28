@@ -6,8 +6,10 @@ import sqlite3
 import sys
 from argparse import ArgumentParser
 from datetime import datetime, timedelta
-from requests.auth import AuthBase
 from pathlib import Path
+from requests.auth import AuthBase
+
+from db_migrate import migrate_db
 
 try:
     # Added in 3.11
@@ -86,8 +88,8 @@ def save_inverter_data(db, octopus_account, inverter, data):
     if len(data) < 1:
         return
 
+    migrate_db(db)
     connection = connect_db(db)
-    migrate_db(connection)
 
     with connection:
         start = str2dt(data[0]["time"]).replace(minute=0, second=0).astimezone(UTC)
@@ -192,41 +194,6 @@ def save_inverter_data(db, octopus_account, inverter, data):
 
 def connect_db(uri):
     return sqlite3.connect(uri)
-
-
-def migrate_db(connection):
-    with connection:
-        connection.executescript("""
-            BEGIN;
-            CREATE TABLE IF NOT EXISTS battery_daily_totals (
-                inverter    TEXT,
-                timestamp   TEXT, -- UTC timestamp when data was read
-                charge      REAL, -- Raw cumulative value from inverter's "today.battery.charge"
-                discharge   REAL, -- Raw cumulative value from inverter's "today.battery.discharge"
-                PRIMARY KEY (inverter, timestamp)
-            );
-            CREATE INDEX IF NOT EXISTS battery_daily_totals_timestamp ON battery_daily_totals(timestamp);
-
-            CREATE TABLE IF NOT EXISTS battery_grid_totals (
-                inverter    TEXT,
-                timestamp   TEXT,
-                import      REAL,
-                export      REAL,
-                PRIMARY KEY (inverter, timestamp)
-            );
-            CREATE INDEX IF NOT EXISTS battery_grid_totals_timestamp ON battery_grid_totals(timestamp);
-
-            CREATE TABLE IF NOT EXISTS charge (
-                inverter  TEXT,
-                start     TEXT, -- timestamp, use UTC date arithmetic
-                end       TEXT, -- timestamp, use UTC date arithmetic
-                charge    REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
-                discharge REAL, -- If precision is needed, use a TEXT field and integer aritmetic.
-                PRIMARY KEY (inverter, start)
-            );
-            CREATE INDEX IF NOT EXISTS charge_start ON charge(start);
-            COMMIT;
-        """)
 
 
 def str2dt(dt: str) -> datetime:

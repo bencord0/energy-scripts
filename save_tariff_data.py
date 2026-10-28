@@ -1,9 +1,10 @@
-import sqlite3
 import json
 import os
+import sqlite3
+from argparse import ArgumentParser
 from datetime import datetime, timedelta
 
-from argparse import ArgumentParser
+from db_migrate import migrate_db
 
 parser = ArgumentParser()
 parser.add_argument('--product-code', required=True)
@@ -45,8 +46,8 @@ def main():
     with open(unit_rates_file) as f:
         rates = json.loads(f.read())['results']
 
+    migrate_db(args.db)
     connection = connect_db(args.db)
-    migrate_db(connection)
 
     # Insert/update the product mapping
     with connection:
@@ -91,30 +92,6 @@ def main():
 
 def connect_db(uri):
     return sqlite3.connect(uri)
-
-
-def migrate_db(connection):
-    with connection:
-        connection.executescript('''
-            BEGIN;
-            CREATE TABLE IF NOT EXISTS products (
-                product_code TEXT NOT NULL,
-                tariff_code  TEXT NOT NULL,
-                type         TEXT NOT NULL, -- IMPORT or EXPORT
-                standing_charge REAL,
-                PRIMARY KEY (product_code, tariff_code)
-            );
-            CREATE TABLE IF NOT EXISTS tariff_rates (
-                product_code TEXT NOT NULL, -- product code
-                tariff_code  TEXT NOT NULL, -- per-region tariff code
-                valid_from   TEXT NOT NULL, -- timestamp, use UTC date arithmetic
-                valid_to     TEXT,          -- timestamp, use UTC date arithmetic
-                value        REAL,          -- If precision is needed, use a TEXT field and integer aritmetic.
-                daily_standing_charge REAL,
-                PRIMARY KEY (product_code, tariff_code, valid_from)
-            );
-            COMMIT;
-        ''')
 
 
 def last_interval(product_code, tariff_code, connection):

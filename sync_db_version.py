@@ -1,8 +1,10 @@
-import sqlite3
-import re
 import os
-from datetime import datetime, timezone
+import re
+import sqlite3
 from argparse import ArgumentParser
+from datetime import datetime, timezone
+
+from db_migrate import migrate_db
 
 parser = ArgumentParser()
 parser.add_argument('db', help='Path to the SQLite database')
@@ -17,8 +19,8 @@ def main():
     print(f"Updating database version to: {timestamp}")
 
     # 1. Update the database
+    migrate_db(args.db)
     connection = sqlite3.connect(args.db)
-    migrate_db(connection)
 
     with connection:
         connection.execute(
@@ -51,15 +53,6 @@ def main():
         print("Done.")
     else:
         print(f"Warning: {args.js_file} not found. Skipping JS update.")
-
-def migrate_db(connection):
-    with connection:
-        connection.execute('''
-            CREATE TABLE IF NOT EXISTS versioning (
-                key   TEXT PRIMARY KEY,
-                value TEXT
-            )
-        ''')
 
 if __name__ == '__main__':
     main()
