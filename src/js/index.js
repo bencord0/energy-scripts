@@ -87,16 +87,26 @@ async function render() {
         return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
     }
 
+    // Apportions the daily standing charge across this UTC day's actual
+    // number of tariff slots (`slots`, from /api/standing-charge), not a
+    // fixed 48/24/1 assumption -- a DST transition shifts a UTC day's real
+    // slot count away from the usual 48, which the API already accounts for.
     function standingChargeForDate(date) {
         const key = dayKeyUTC(date);
         let charge = 0;
-        standingCharges.map(({day, daily_standing_charge}) => {
-            if (day == key) {
-                charge = daily_standing_charge;
+        let slots = 0;
+        standingCharges.map((row) => {
+            if (row.day == key) {
+                charge = row.daily_standing_charge;
+                slots = row.slots;
             }
         });
 
-        return charge;
+        if (timeWindow === '1d') return charge;
+        if (!slots) return 0;
+
+        const adjustedSlotsPerDay = slotsPerDay * slots / 48;
+        return charge / adjustedSlotsPerDay;
     }
 
     // Compute maxP considering standing charge and export rates
@@ -111,7 +121,7 @@ async function render() {
 
     const standingChargeRows = slotsWithConsumption.map(d => {
         const timestamp = new Date(d.timestamp);
-        const standingChargePence = standingChargeForDate(timestamp) / slotsPerDay;
+        const standingChargePence = standingChargeForDate(timestamp);
         return {
             timestamp,
             import_rate: d.import_rate,
@@ -122,7 +132,7 @@ async function render() {
 
     const usageRows = slotsWithConsumption.map(d => {
         const timestamp = new Date(d.timestamp);
-        const standingChargePence = standingChargeForDate(timestamp) / slotsPerDay;
+        const standingChargePence = standingChargeForDate(timestamp);
         const standingChargeScaled = standingChargePence / scaleFactor;
         const usageScaled = (d.cost || 0) / scaleFactor;
         return {
@@ -360,7 +370,7 @@ async function render() {
                     const timestamp = new Date(d.timestamp);
                     let standingChargeFraction = 0;
                     if (d.consumption !== null && d.consumption !== undefined) {
-                        standingChargeFraction = standingChargeForDate(timestamp) / slotsPerDay;
+                        standingChargeFraction = standingChargeForDate(timestamp);
                     }
                     const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
                     return [
@@ -405,8 +415,8 @@ async function render() {
     // Group slots by day to be careful about fractional day floating point arithmetic
     const standingCharge = Array.from(d3.group(slotsWithConsumption, d => dayKeyUTC(new Date(d.timestamp))))
         .reduce((sum, [dayKey, slots]) => {
-            const dailyStandingCharge = standingChargeForDate(dayKey);
-            return sum + (dailyStandingCharge * slots.length / slotsPerDay);
+            const standingChargePerSlot = standingChargeForDate(dayKey);
+            return sum + (standingChargePerSlot * slots.length);
         }, 0);
 
     const totalCost = usageCost + standingCharge;
