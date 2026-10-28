@@ -50,71 +50,130 @@ pub async fn consumption(
 
     let window: String = window.unwrap_or(String::from("30m"));
 
-    let Some(idx) = ["1d", "1h", "30m"].iter().position(|i| *i == &window) else {
-        return Err(StatusCode::BAD_REQUEST);
-    };
-
+    ["1d", "1h", "30m"]
+        .iter()
+        .position(|i| *i == &window)
+        .ok_or(StatusCode::BAD_REQUEST)?;
 
     let mut conn = app
         .acquire_sqlite()
         .await
         .wrap_err("acquire sqlite")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let result = sqlx::query(
-        "SELECT
-            strftime('%Y-%m-%dT00:00:00Z', i.valid_from), -- daily
-            strftime('%Y-%m-%dT%H:00:00Z', i.valid_from), -- hourly
-            i.valid_from,                                 -- half-hourly
+        "WITH rates AS (
+            SELECT
+                MIN(i.valid_from) AS valid_from,
+                CASE ?3
+                    WHEN '1d' THEN date(i.valid_from)
+                    WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', i.valid_from)
+                    ELSE i.valid_from
+                END AS slot,
+                AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
+                AVG(CASE WHEN pe.type='EXPORT' THEN e.value END) AS export_value
 
-            MAX(c.consumption),
-            MAX(c.generation),
-            AVG(i.value),
-            AVG(e.value),
-            MAX(c.consumption * i.value),
-            MAX(c.generation * e.value),
-            SUM(b.charge),
-            SUM(b.discharge),
-            SUM(s.value),
-            SUM(v.charge)
-        FROM tariff_rates as i
+            FROM tariff_rates i
 
-        LEFT JOIN tariff_rates as e
-               ON i.valid_from = e.valid_from
+            JOIN tariff_rates e
+              ON i.valid_from = e.valid_from
 
-        LEFT JOIN consumption as c
-               ON c.interval_start = i.valid_from
+            JOIN products pi
+              ON i.product_code = pi.product_code
+             AND i.tariff_code = pi.tariff_code
 
-        JOIN products as pi
-          ON i.product_code = pi.product_code
-         AND i.tariff_code = pi.tariff_code
+            JOIN products pe
+              ON e.product_code = pe.product_code
+             AND e.tariff_code = pe.tariff_code
 
-        JOIN products as pe
-          ON e.product_code = pe.product_code
-         AND e.tariff_code = pe.tariff_code
+           GROUP BY slot
+        ),
 
-        LEFT JOIN charge as b
-               ON i.valid_from = b.start
+        grid AS (
+            SELECT
+                MIN(c.interval_start) AS interval_start,
+                CASE ?3
+                    WHEN '1d' THEN date(c.interval_start)
+                    WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', c.interval_start)
+                    ELSE c.interval_start
+                END AS slot,
+                SUM(consumption) AS consumption,
+                SUM(generation) AS generation
 
-        LEFT JOIN solar_generation as s
-               ON i.valid_from = s.timestamp
+            FROM consumption c
+            GROUP BY slot
+        ),
 
-        LEFT JOIN carcharge as v
-               ON i.valid_from = v.timestamp
+        charge_diff AS (
+            SELECT
+                MIN(c.start) AS start,
+                CASE ?3
+                    WHEN '1d' THEN date(c.start)
+                    WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', c.start)
+                    ELSE c.start
+                END AS slot,
 
-        WHERE i.valid_from >= ? -- start
-          AND i.valid_from < ?  -- end
+                SUM(c.charge) AS charge,
+                SUM(c.discharge) AS discharge
 
-          AND pi.type = 'IMPORT'
-          AND pe.type = 'EXPORT'
+            FROM charge c
+            GROUP BY slot
+        ),
 
-        GROUP BY
-            CASE ?              -- window
-              WHEN '1d' THEN date(i.valid_from)
-              WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', i.valid_from)
-              ELSE i.valid_from
-            END
+        solar_sum AS (
+            SELECT
+                MIN(s.timestamp) AS timestamp,
+                CASE ?3
+                    WHEN '1d' THEN date(s.timestamp)
+                    WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', s.timestamp)
+                    ELSE s.timestamp
+                END AS slot,
+                SUM(value) AS solar
 
-        ORDER BY i.valid_from ASC"
+            FROM solar_generation s
+            GROUP BY slot
+        ),
+
+        car_sum AS (
+            SELECT
+                MIN(c.timestamp) AS timestamp,
+                CASE ?3
+                    WHEN '1d' THEN date(c.timestamp)
+                    WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', c.timestamp)
+                    ELSE c.timestamp
+                END AS slot,
+                SUM(charge) AS car_charge
+
+            FROM carcharge c
+            GROUP BY slot
+        )
+
+        SELECT
+            r.slot,
+
+            grid.consumption,
+            grid.generation,
+
+            r.import_value,
+            r.export_value,
+
+            grid.consumption * r.import_value AS cost,
+            grid.generation * r.export_value AS sale,
+
+            charge_diff.charge,
+            charge_diff.discharge,
+            solar_sum.solar,
+            car_sum.car_charge
+
+        FROM rates r
+        LEFT JOIN grid ON grid.slot = r.slot
+        LEFT JOIN charge_diff ON charge_diff.slot = r.slot
+        LEFT JOIN solar_sum ON solar_sum.slot = r.slot
+        LEFT JOIN car_sum ON car_sum.slot = r.slot
+        WHERE r.valid_from >= ?1 AND r.valid_from < ?2
+
+        GROUP BY r.slot
+        ORDER BY r.valid_from ASC"
     )
         .bind(&start)
         .bind(&end)
@@ -128,22 +187,22 @@ pub async fn consumption(
 
     for row in result {
         let consumption = Consumption {
-            timestamp: str2dt(row.get(idx))
+            timestamp: str2dt(row.get(0))
                 .wrap_err("timestamp")
                 .map_err(|e| {
                     log::error!("timestamp: {e}");
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?,
-            consumption: row.get(3),
-            generation: row.get(4),
-            import_rate: row.get(5),
-            export_rate: row.get(6),
-            cost: row.get(7),
-            sale: row.get(8),
-            charge: row.get(9),
-            discharge: row.get(10),
-            solar_generation: row.get(11),
-            car_charge: row.get(12),
+            consumption: row.get(1),
+            generation: row.get(2),
+            import_rate: row.get(3),
+            export_rate: row.get(4),
+            cost: row.get(5),
+            sale: row.get(6),
+            charge: row.get(7),
+            discharge: row.get(8),
+            solar_generation: row.get(9),
+            car_charge: row.get(10),
         };
         data.push(consumption);
     }
