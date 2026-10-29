@@ -1,8 +1,8 @@
 import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
-import { getConsumption, getStandingCharge, getAgilePredictions } from '/js/db.js';
+import { getConsumption, getStandingCharge, getAgilePredictions, getTimeWindow } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
-import { formatCost, getTimeWindowInfo } from '/js/utils.js';
+import { formatCost, getTimeWindowInfo, weekStartUTC } from '/js/utils.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -16,7 +16,7 @@ let endDate = new Date(urlParams.get('end') || tomorrow);
 
 let urlDebouncer;
 function updateUrl(startStr, endStr, timeWindow) {
-    if (timeWindow === '1d') {
+    if (timeWindow === '1w' || timeWindow === '1d') {
         startStr = startStr.slice(0, 10);
         endStr = endStr.slice(0, 10);
     } else if (timeWindow === '1h') {
@@ -42,10 +42,16 @@ async function render() {
     // https://observablehq.com/blog/reshaping-data-plot-d3
     // https://r4ds.had.co.nz/tidy-data.html
     // Expect data in a "tidy" format.
-    const startStr = startDate.toISOString().slice(0, 16);
-    const endStr = endDate.toISOString().slice(0, 16);
+    let startStr = startDate.toISOString().slice(0, 16);
+    let endStr = endDate.toISOString().slice(0, 16);
 
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
+
+    // A '1w' bucket starts on Monday.
+    // Truncate the window to remove partial weeks.
+    startStr = getTimeWindow(startStr, endStr) === '1w'
+        ? weekStartUTC(startDate).toISOString().slice(0, 16)
+        : startStr;
 
     let timeWindow;
     let data;
@@ -77,6 +83,7 @@ async function render() {
 
     const { slotsPerDay, intervalHours } = getTimeWindowInfo(timeWindow);
     const interval = {
+        "1w": d3.timeMonday,
         "1d": d3.timeDay,
         "1h": d3.timeHour,
         "30m": d3.timeMinute.every(30),
@@ -87,11 +94,30 @@ async function render() {
         return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
     }
 
+    // Sums the whole daily standing charges a '1w' bucket covers.
+    // A Daylight Savings transition week holds 335 or 337 half-hours but still exactly 7
+    // standing charges.
+    function standingChargeForWeek(date) {
+        const weekStart = weekStartUTC(date);
+        let total = 0;
+        for (let i = 0; i < 7; i++) {
+            const day = new Date(weekStart);
+            day.setUTCDate(day.getUTCDate() + i);
+            const key = dayKeyUTC(day);
+            standingCharges.forEach((row) => {
+                if (row.day === key) total += row.daily_standing_charge;
+            });
+        }
+        return total;
+    }
+
     // Apportions the daily standing charge across this UTC day's actual
-    // number of tariff slots (`slots`, from /api/standing-charge), not a
-    // fixed 48/24/1 assumption -- a DST transition shifts a UTC day's real
+    // number of tariff slots (`slots`, from /api/standing-charge).
+    // A Daylight Savings transition shifts a UTC day's real
     // slot count away from the usual 48, which the API already accounts for.
     function standingChargeForDate(date) {
+        if (timeWindow === '1w') return standingChargeForWeek(new Date(date));
+
         const key = dayKeyUTC(date);
         let charge = 0;
         let slots = 0;
@@ -374,7 +400,9 @@ async function render() {
                     }
                     const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
                     return [
-                        `Time: ${d3.timeFormat("%H:%M")(timestamp)}`,
+                        timeWindow === '1w'
+                            ? `Week of: ${d3.timeFormat("%b %d")(timestamp)}`
+                            : `Time: ${d3.timeFormat("%H:%M")(timestamp)}`,
                         `Solar: ${(d.solar_generation || 0).toFixed(2)} kWh`,
                         `Import: ${(d.consumption || 0).toFixed(3)} kWh`,
                         `Import Price: ${(d.import_rate || 0).toFixed(2)} p/kWh`,

@@ -34,9 +34,10 @@ pub async fn agile_prediction(
 
     let mut data: Vec<AgilePrediction> = Vec::new();
 
-    let Some(idx) = ["1d", "1h", "30m"].iter().position(|i| *i == &window) else {
-        return Err(StatusCode::BAD_REQUEST);
-    };
+    ["1w", "1d", "1h", "30m"]
+        .iter()
+        .position(|i| *i == &window)
+        .ok_or(StatusCode::BAD_REQUEST)?;
 
     let mut conn = app
         .acquire_sqlite()
@@ -46,26 +47,23 @@ pub async fn agile_prediction(
 
     let result = sqlx::query(
         "SELECT
-            strftime('%Y-%m-%dT00:00:00Z', timestamp), -- 1d
-            strftime('%Y-%m-%dT%H:00:00Z', timestamp), -- 1h
-            timestamp,                                 -- 30m
+            CASE ?4 -- window
+                WHEN '1w' THEN strftime('%Y-%m-%dT00:00:00Z', date(timestamp, '-6 days', 'weekday 1'))
+                WHEN '1d' THEN strftime('%Y-%m-%dT00:00:00Z', timestamp)
+                WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', timestamp)
+                ELSE timestamp
+            END AS slot,
             AVG(import_prediction),
             AVG(export_prediction)
 
         FROM agile_predictions
 
-        WHERE region    =  ? -- region
-          AND timestamp >= ? -- start
-          AND timestamp <  ? -- end
+        WHERE region    =  ?1 -- region
+          AND timestamp >= ?2 -- start
+          AND timestamp <  ?3 -- end
 
-        GROUP BY
-          CASE ?             -- window
-          WHEN '1d' THEN strftime('%Y-%m-%dT00:00:00Z', timestamp)
-          WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', timestamp)
-          ELSE timestamp
-        END
-
-        ORDER BY timestamp ASC"
+        GROUP BY slot
+        ORDER BY slot ASC"
     )
         .bind(&region)
         .bind(&start)
@@ -80,9 +78,9 @@ pub async fn agile_prediction(
 
     for row in result {
         let p = AgilePrediction {
-            timestamp: row.get(idx),
-            import_prediction: row.get(3),
-            export_prediction: row.get(4),
+            timestamp: row.get(0),
+            import_prediction: row.get(1),
+            export_prediction: row.get(2),
         };
         data.push(p);
     }

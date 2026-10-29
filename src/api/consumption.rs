@@ -50,7 +50,7 @@ pub async fn consumption(
 
     let window: String = window.unwrap_or(String::from("30m"));
 
-    ["1d", "1h", "30m"]
+    ["1w", "1d", "1h", "30m"]
         .iter()
         .position(|i| *i == &window)
         .ok_or(StatusCode::BAD_REQUEST)?;
@@ -101,6 +101,7 @@ pub async fn consumption(
             SELECT
                 MIN(t.valid_from) AS valid_from,
                 CASE ?3
+                    WHEN '1w' THEN date(t.valid_from, '-6 days', 'weekday 1')
                     WHEN '1d' THEN date(t.valid_from)
                     WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', t.valid_from)
                     ELSE t.valid_from
@@ -124,6 +125,7 @@ pub async fn consumption(
             SELECT
                 MIN(c.start) AS start,
                 CASE ?3
+                    WHEN '1w' THEN date(c.start, '-6 days', 'weekday 1')
                     WHEN '1d' THEN date(c.start)
                     WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', c.start)
                     ELSE c.start
@@ -140,6 +142,7 @@ pub async fn consumption(
             SELECT
                 MIN(s.timestamp) AS timestamp,
                 CASE ?3
+                    WHEN '1w' THEN date(s.timestamp, '-6 days', 'weekday 1')
                     WHEN '1d' THEN date(s.timestamp)
                     WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', s.timestamp)
                     ELSE s.timestamp
@@ -154,6 +157,7 @@ pub async fn consumption(
             SELECT
                 MIN(c.timestamp) AS timestamp,
                 CASE ?3
+                    WHEN '1w' THEN date(c.timestamp, '-6 days', 'weekday 1')
                     WHEN '1d' THEN date(c.timestamp)
                     WHEN '1h' THEN strftime('%Y-%m-%dT%H:00:00Z', c.timestamp)
                     ELSE c.timestamp

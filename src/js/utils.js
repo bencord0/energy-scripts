@@ -11,7 +11,14 @@ export function formatCost(pence) {
 }
 
 export function getTimeWindowInfo(timeWindow) {
-    const slotsPerDay = { '1d': 1, '1h': 24, '30m': 48 }[timeWindow]
-    const intervalHours = 24 / slotsPerDay;
+    const intervalHours = { '1w': 168, '1d': 24, '1h': 1, '30m': 0.5 }[timeWindow];
+    const slotsPerDay = 24 / intervalHours;
     return { slotsPerDay, intervalHours };
+}
+
+export function weekStartUTC(date) {
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const mondayOffset = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - mondayOffset);
+    return d;
 }

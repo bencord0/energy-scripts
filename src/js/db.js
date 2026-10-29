@@ -3,7 +3,9 @@ export function getTimeWindow(startStr, endStr) {
     const endDate = new Date(endStr);
     const durationHours = (endDate - startDate) / (1000 * 60 * 60);
 
-    if (durationHours > 24 * 20) {
+    if (durationHours > 24 * 150) {
+        return '1w';
+    } else if (durationHours > 24 * 20) {
         return '1d';
     } else if (durationHours > 24 * 8) {
         return '1h';
