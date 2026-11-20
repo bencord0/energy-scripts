@@ -1,8 +1,10 @@
 mod agilepredict;
 mod foxess;
+pub mod kraken;
 pub mod octopus;
 pub mod ohme;
 pub use agilepredict::{AgilePredictClient, AgilePrediction, AgilePredictionPrice};
 pub use foxess::FoxESSClient;
+pub use kraken::KrakenClient;
 pub use octopus::OctopusClient;
 pub use ohme::OhmeClient;

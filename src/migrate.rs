@@ -107,6 +107,28 @@ const V5_SCHEMA: &str = "
         value TEXT
     );";
 
+// Version 6
+//
+// Saving Sessions events the account joined or booked. Kept apart from
+// tariff_rates so promotional adjustments stay distinguishable from the base
+// tariff price.
+const V6_SCHEMA: &str = "BEGIN;
+
+    CREATE TABLE IF NOT EXISTS promotion_events (
+        account             TEXT NOT NULL,
+        event_id            TEXT NOT NULL,
+        event_type          TEXT NOT NULL, -- TURN_DOWN, TURN_UP, WEEKEND_HAPPY_HOUR, or types not yet priced
+        code                TEXT,
+        start_at            TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+        end_at              TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+        reward_octopoints   INTEGER,       -- NULL until settled; 8 points = 1p
+        free_import_kwh_cap REAL,          -- free import allowance per event, NULL if none
+        PRIMARY KEY (account, event_id)
+    );
+    CREATE INDEX IF NOT EXISTS promotion_events_start_at ON promotion_events(start_at);
+
+    COMMIT;";
+
 pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
     let mut version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&mut *conn)
@@ -138,8 +160,13 @@ pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
         version = 5;
     }
 
+    if version < 6 {
+        sqlx::query::<Sqlite>(V6_SCHEMA).execute(&mut *conn).await?;
+        version = 6;
+    }
+
     // Next migration step goes here:
-    // if version < 6 { ...; version = 6; }
+    // if version < 7 { ...; version = 7; }
 
     // PRAGMA can't take bind params; `version` is an internal constant.
     sqlx::query(&format!("PRAGMA user_version = {version}"))
@@ -268,7 +295,7 @@ mod tests {
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut conn)
             .await?;
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         Ok(())
     }
 

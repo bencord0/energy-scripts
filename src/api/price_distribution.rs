@@ -18,12 +18,16 @@ pub struct PriceDistribution {
     slots: u32,
     cost: f32,
     sale: f32,
+    import_incentive: f32, // p/kWh, <= 0
+    export_incentive: f32, // p/kWh, >= 0
+    cost_incentive: f32,   // p, <= 0
+    sale_incentive: f32,   // p, >= 0
 }
 
 #[derive(Deserialize, Debug)]
 pub struct PriceDistributionQuery {
-    start: String,
-    end: String,
+    pub(crate) start: String,
+    pub(crate) end: String,
 }
 
 pub async fn price_distribution(
@@ -41,38 +45,140 @@ pub async fn price_distribution(
         .wrap_err("acquire sqlite")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let result = sqlx::query(
-        "SELECT
-            import.value as import_rate,
-            export.value as export_rate,
-            c.consumption as consumption,
-            c.generation as generation,
-            1 as slots,
-            (import.value * c.consumption) as cost,
-            (export.value * c.generation) as sale
-        FROM consumption as c
+        "WITH
 
-        LEFT JOIN tariff_rates as import
+        tariffs AS (
+            SELECT
+                i.valid_from,
+                AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
+                AVG(CASE WHEN pe.type='EXPORT' THEN e.value END) AS export_value
 
-        LEFT JOIN tariff_rates as export
-        ON
-            c.interval_start = import.valid_from
-        AND c.interval_start = export.valid_from
+            FROM tariff_rates i
 
-        JOIN products as pimport
-        ON
-            import.product_code = pimport.product_code
-        AND import.tariff_code = pimport.tariff_code
+            JOIN tariff_rates e
+              ON i.valid_from = e.valid_from
 
-        JOIN products as pexport
-        ON
-            export.product_code = pexport.product_code
-        AND export.tariff_code = pexport.tariff_code
+            JOIN products pi
+              ON i.product_code = pi.product_code
+             AND i.tariff_code = pi.tariff_code
+
+            JOIN products pe
+              ON e.product_code = pe.product_code
+             AND e.tariff_code = pe.tariff_code
+
+           GROUP BY i.valid_from
+        ),
+
+        consumption_sum AS (
+            SELECT
+                interval_start,
+                SUM(consumption) AS consumption,
+                SUM(generation) AS generation
+
+            FROM consumption
+            GROUP BY interval_start
+        ),
+
+        promo_slots AS (
+            SELECT
+                t.valid_from,
+                t.import_value,
+                p.event_type,
+                p.reward_octopoints / 8.0 AS reward_pence,
+                p.free_import_kwh_cap,
+                COALESCE(cs.consumption, 0.0) AS consumption,
+                COALESCE(cs.generation, 0.0) AS generation,
+                SUM(COALESCE(cs.consumption, 0.0)) OVER event AS event_consumption,
+                SUM(COALESCE(cs.generation, 0.0)) OVER event AS event_generation,
+                COUNT(*) OVER event AS event_slots
+
+            FROM promotion_events p
+            JOIN tariffs t
+              ON t.valid_from >= p.start_at
+             AND t.valid_from <  p.end_at
+            LEFT JOIN consumption_sum cs ON cs.interval_start = t.valid_from
+
+            WINDOW event AS (PARTITION BY p.account, p.event_id)
+        ),
+
+        slot_incentives AS (
+            SELECT
+                valid_from,
+
+                SUM(CASE event_type
+
+                    -- Free import, capped per event; the cap is shared
+                    -- across the event's slots in proportion to usage.
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN
+                        -consumption * import_value
+                        * MIN(1.0, COALESCE(free_import_kwh_cap / NULLIF(event_consumption, 0.0), 1.0))
+
+                    -- Power Up: reward for importing more, credited against import.
+                    WHEN 'TURN_UP' THEN
+                        -COALESCE(reward_pence, 0.0)
+                        * COALESCE(consumption / NULLIF(event_consumption, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS cost_incentive,
+
+                SUM(CASE event_type
+
+                    -- Power Down: reward treated as a boost to the export price.
+                    WHEN 'TURN_DOWN' THEN
+                        COALESCE(reward_pence, 0.0)
+                        * COALESCE(generation / NULLIF(event_generation, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS sale_incentive,
+
+                SUM(CASE event_type
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN -import_value
+                    ELSE 0.0
+                END) AS schedule_import_incentive
+
+            FROM promo_slots
+            GROUP BY valid_from
+        ),
+
+        -- One row per half-hour with meter data: the tariff price plus any
+        -- Saving Sessions adjustment, kept as separate columns.
+        slot_prices AS (
+            SELECT
+                cs.interval_start AS valid_from,
+                cs.consumption,
+                cs.generation,
+                t.import_value,
+                t.export_value,
+                COALESCE(si.cost_incentive, 0.0) AS cost_incentive,
+                COALESCE(si.sale_incentive, 0.0) AS sale_incentive,
+                COALESCE(si.cost_incentive / NULLIF(cs.consumption, 0.0), si.schedule_import_incentive, 0.0) AS import_incentive,
+                COALESCE(si.sale_incentive / NULLIF(cs.generation, 0.0), 0.0) AS export_incentive
+
+            FROM consumption_sum cs
+            JOIN tariffs t ON t.valid_from = cs.interval_start
+            LEFT JOIN slot_incentives si ON si.valid_from = cs.interval_start
+        )
+
+        SELECT
+            import_value AS import_rate,
+            export_value AS export_rate,
+            consumption,
+            generation,
+            1 AS slots,
+            import_value * consumption AS cost,
+            export_value * generation AS sale,
+            import_incentive,
+            export_incentive,
+            cost_incentive,
+            sale_incentive
+
+        FROM slot_prices
 
         WHERE
-            c.interval_start >= ? -- start
-        AND c.interval_start <  ? -- end
-        AND pimport.type = 'IMPORT'
-        AND pexport.type = 'EXPORT';"
+            valid_from >= ? -- start
+        AND valid_from <  ? -- end
+        AND import_value IS NOT NULL
+        AND export_value IS NOT NULL;"
     )
         .bind(&start)
         .bind(&end)
@@ -92,6 +198,10 @@ pub async fn price_distribution(
             slots: row.get(4),
             cost: row.get(5),
             sale: row.get(6),
+            import_incentive: row.get(7),
+            export_incentive: row.get(8),
+            cost_incentive: row.get(9),
+            sale_incentive: row.get(10),
         };
         data.push(pd);
     }

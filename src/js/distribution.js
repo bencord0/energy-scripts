@@ -3,7 +3,7 @@ import * as Plot from '/js/plot.esm.min.js';
 import { getPriceDistribution, getStandingCharge, getTimeWindow, getDataLimits } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
 import { importThresholds, exportThresholds } from '/js/thresholds.js';
-import { formatCost, getTimeWindowInfo } from '/js/utils.js';
+import { applyIncentives, formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -51,8 +51,13 @@ async function render() {
         }),
     ]);
 
+    // Rates, costs and sales from here on are after Saving Sessions.
+    data = data.map(applyIncentives);
+
     const slotsPerDay = 48;
-    const maxX = d3.max(data, d => Math.max(d.import_rate, d.export_rate)) || 0;
+    // The axis is sized by the tariff: a reward spread over a tiny export can
+    // make a corrected rate huge, and would squash every other bin.
+    const maxX = d3.max(data, d => Math.max(d.tariff_import_rate, d.tariff_export_rate)) || 0;
     const ceilX = Math.ceil(maxX / 10) * 10;
     const interval = 0.5;
 
@@ -66,13 +71,19 @@ async function render() {
     });
 
     // 1. Pre-calculate bins
+    // Rates outside the axis are clamped into the end bins so their energy and
+    // cost are still counted (d3.bin drops values outside its domain).
+    // https://d3js.org/d3-array/bin#bin_domain
+    function clampRate(rate) {
+        return Math.max(0, Math.min(rate, ceilX));
+    }
     const thresholds = d3.range(0, ceilX + interval, interval);
     const importBinFn = d3.bin()
-        .value(d => d.import_rate)
+        .value(d => clampRate(d.import_rate))
         .domain([0, ceilX])
         .thresholds(thresholds);
     const exportBinFn = d3.bin()
-        .value(d => d.export_rate)
+        .value(d => clampRate(d.export_rate))
         .domain([0, ceilX])
         .thresholds(thresholds);
 

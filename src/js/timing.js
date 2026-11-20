@@ -2,7 +2,7 @@ import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { getConsumptionByTimeOfDay, getDataLimits } from '/js/db.js';
 import { priceColors } from '/js/colors.js';
-import { formatCost, getTimeWindowInfo } from '/js/utils.js';
+import { applyIncentives, formatCost, getTimeWindowInfo } from '/js/utils.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -36,7 +36,7 @@ async function render() {
     const endStr = endDate.toISOString().slice(0, 16);
 
     let { data, timeWindow } = await getConsumptionByTimeOfDay(startStr, endStr);
-    data = data.map((d) => {
+    data = data.map(applyIncentives).map((d) => {
         let [hours, minutes] = d.time_of_day.split(':').map(Number);
         let start = new Date();
         start.setHours(hours, minutes, 0, 0);
@@ -82,6 +82,10 @@ async function render() {
                         `Import Price: ${d.import_rate.toFixed(2)} p/kWh`,
                         `Exported: ${generation.toFixed(3)} kWh`,
                         `Export Price: ${d.export_rate.toFixed(2)} p/kWh`,
+                        ...(d.import_incentive || d.export_incentive ? [
+                            `Tariff Import Price: ${d.tariff_import_rate.toFixed(2)} p/kWh`,
+                            `Tariff Export Price: ${d.tariff_export_rate.toFixed(2)} p/kWh`,
+                        ] : []),
                     ].join("\n");
                 },
 

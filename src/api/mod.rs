@@ -1,5 +1,5 @@
 mod consumption;
-mod price_distribution;
+pub(crate) mod price_distribution;
 mod standing_charge;
 mod agile_prediction;
 

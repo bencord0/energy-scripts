@@ -29,6 +29,12 @@ pub struct Consumption {
     charge: f32,
     discharge: f32,
     car_charge: f32,
+
+    // Promotional adjustments. Effective price = base + incentive.
+    import_incentive: f32, // p/kWh, <= 0
+    export_incentive: f32, // p/kWh, >= 0
+    cost_incentive: f32,   // p, <= 0
+    sale_incentive: f32,   // p, >= 0
 }
 
 #[derive(Deserialize, Debug)]
@@ -62,7 +68,8 @@ pub async fn consumption(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let result = sqlx::query(
-        "WITH tariffs AS (
+        "WITH
+        tariffs AS (
             SELECT
                 i.valid_from,
                 AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
@@ -94,10 +101,73 @@ pub async fn consumption(
             GROUP BY interval_start
         ),
 
+        promo_slots AS (
+            SELECT
+                t.valid_from,
+                t.import_value,
+                p.event_type,
+                p.reward_octopoints / 8.0 AS reward_pence,
+                p.free_import_kwh_cap,
+                COALESCE(cs.consumption, 0.0) AS consumption,
+                COALESCE(cs.generation, 0.0) AS generation,
+                SUM(COALESCE(cs.consumption, 0.0)) OVER event AS event_consumption,
+                SUM(COALESCE(cs.generation, 0.0)) OVER event AS event_generation,
+                COUNT(*) OVER event AS event_slots
+
+            FROM promotion_events p
+            JOIN tariffs t
+              ON t.valid_from >= p.start_at
+             AND t.valid_from <  p.end_at
+            LEFT JOIN consumption_sum cs ON cs.interval_start = t.valid_from
+
+            WINDOW event AS (PARTITION BY p.account, p.event_id)
+        ),
+
+        slot_incentives AS (
+            SELECT
+                valid_from,
+
+                SUM(CASE event_type
+
+                    -- Free import, with a 16kWh cap per event.
+                    -- The cap is shared across the event's slots in proportion to usage.
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN
+                        -consumption * import_value
+                        * MIN(1.0, COALESCE(free_import_kwh_cap / NULLIF(event_consumption, 0.0), 1.0))
+
+                    -- Power Up: reward for importing more, credited against import.
+                    WHEN 'TURN_UP' THEN
+                        -COALESCE(reward_pence, 0.0)
+                        * COALESCE(consumption / NULLIF(event_consumption, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS cost_incentive,
+
+                SUM(CASE event_type
+
+                    -- Power Down: reward treated as a boost to the export price.
+                    WHEN 'TURN_DOWN' THEN
+                        COALESCE(reward_pence, 0.0)
+                        * COALESCE(generation / NULLIF(event_generation, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS sale_incentive,
+
+                -- Per-kWh discount for slots with nothing to weight by,
+                -- mirroring avg_import_value. Reward-based types have no
+                -- per-kWh price without usage.
+                SUM(CASE event_type
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN -import_value
+                    ELSE 0.0
+                END) AS schedule_import_incentive
+
+            FROM promo_slots
+            GROUP BY valid_from
+        ),
+
         grid AS (
             -- cost/sale are computed per raw half-hour (consumption * slot rate) and only summed afterwards.
-            -- A bucketed window's rate ends up weighted by when consumption actually
-            -- happened, not a plain average of the tariff schedule.
+            -- A bucketed window's rate ends up weighted by when consumption actually happened.
             SELECT
                 MIN(t.valid_from) AS valid_from,
                 CASE ?3
@@ -111,13 +181,17 @@ pub async fn consumption(
                 SUM(COALESCE(cs.consumption, 0.0) * t.import_value) AS cost,
                 SUM(COALESCE(cs.generation, 0.0) * t.export_value) AS sale,
 
-                -- Unweighted schedule price, used as the reported rate only
-                -- when there was no consumption/generation to weight by.
+                -- Unweighted schedule price, for display when there is no consumption
                 AVG(t.import_value) AS avg_import_value,
-                AVG(t.export_value) AS avg_export_value
+                AVG(t.export_value) AS avg_export_value,
+
+                SUM(COALESCE(si.cost_incentive, 0.0)) AS cost_incentive,
+                SUM(COALESCE(si.sale_incentive, 0.0)) AS sale_incentive,
+                AVG(COALESCE(si.schedule_import_incentive, 0.0)) AS avg_import_incentive
 
             FROM tariffs t
             LEFT JOIN consumption_sum cs ON cs.interval_start = t.valid_from
+            LEFT JOIN slot_incentives si ON si.valid_from = t.valid_from
             GROUP BY slot
         ),
 
@@ -183,7 +257,13 @@ pub async fn consumption(
             COALESCE(charge_diff.charge, 0.0),
             COALESCE(charge_diff.discharge, 0.0),
             COALESCE(solar_sum.solar, 0.0),
-            COALESCE(car_sum.car_charge, 0.0)
+            COALESCE(car_sum.car_charge, 0.0),
+
+            COALESCE(grid.cost_incentive / NULLIF(grid.consumption, 0.0), grid.avg_import_incentive, 0.0) AS import_incentive,
+            COALESCE(grid.sale_incentive / NULLIF(grid.generation,  0.0), 0.0) AS export_incentive,
+
+            grid.cost_incentive,
+            grid.sale_incentive
 
         FROM grid
         LEFT JOIN charge_diff ON charge_diff.slot = grid.slot
@@ -222,6 +302,10 @@ pub async fn consumption(
             discharge: row.get(8),
             solar_generation: row.get(9),
             car_charge: row.get(10),
+            import_incentive: row.get(11),
+            export_incentive: row.get(12),
+            cost_incentive: row.get(13),
+            sale_incentive: row.get(14),
         };
         data.push(consumption);
     }
@@ -236,6 +320,8 @@ pub struct ConsumptionByTime {
     export_rate: f32,
     consumption: f32,
     generation: f32,
+    import_incentive: f32, // p/kWh, <= 0
+    export_incentive: f32, // p/kWh, >= 0
 }
 
 #[derive(Deserialize, Debug)]
@@ -261,10 +347,9 @@ pub async fn consumption_by_time(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let result = sqlx::query(
-        // Both sources are collapsed to one row per half-hour before the
-        // join. Overlapping tariff products would otherwise multiply every
-        // SUM by the number of matching rate rows.
-        "WITH tariffs AS (
+        "WITH
+
+        tariffs AS (
             SELECT
                 i.valid_from,
                 AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
@@ -294,28 +379,107 @@ pub async fn consumption_by_time(
 
             FROM consumption
             GROUP BY interval_start
+        ),
+
+        promo_slots AS (
+            SELECT
+                t.valid_from,
+                t.import_value,
+                p.event_type,
+                p.reward_octopoints / 8.0 AS reward_pence,
+                p.free_import_kwh_cap,
+                COALESCE(cs.consumption, 0.0) AS consumption,
+                COALESCE(cs.generation, 0.0) AS generation,
+                SUM(COALESCE(cs.consumption, 0.0)) OVER event AS event_consumption,
+                SUM(COALESCE(cs.generation, 0.0)) OVER event AS event_generation,
+                COUNT(*) OVER event AS event_slots
+
+            FROM promotion_events p
+            JOIN tariffs t
+              ON t.valid_from >= p.start_at
+             AND t.valid_from <  p.end_at
+            LEFT JOIN consumption_sum cs ON cs.interval_start = t.valid_from
+
+            WINDOW event AS (PARTITION BY p.account, p.event_id)
+        ),
+
+        slot_incentives AS (
+            SELECT
+                valid_from,
+
+                SUM(CASE event_type
+
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN
+                        -consumption * import_value
+                        * MIN(1.0, COALESCE(free_import_kwh_cap / NULLIF(event_consumption, 0.0), 1.0))
+
+                    -- Power Up: reward for importing more, credited against import.
+                    WHEN 'TURN_UP' THEN
+                        -COALESCE(reward_pence, 0.0)
+                        * COALESCE(consumption / NULLIF(event_consumption, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS cost_incentive,
+
+                SUM(CASE event_type
+
+                    -- Power Down: reward treated as a boost to the export price.
+                    WHEN 'TURN_DOWN' THEN
+                        COALESCE(reward_pence, 0.0)
+                        * COALESCE(generation / NULLIF(event_generation, 0.0), 1.0 / event_slots)
+
+                    ELSE 0.0
+                END) AS sale_incentive,
+
+                SUM(CASE event_type
+                    WHEN 'WEEKEND_HAPPY_HOUR' THEN -import_value
+                    ELSE 0.0
+                END) AS schedule_import_incentive
+
+            FROM promo_slots
+            GROUP BY valid_from
+        ),
+
+        -- One row per half-hour with meter data: the tariff price plus any
+        -- Saving Sessions adjustment, kept as separate columns.
+        slot_prices AS (
+            SELECT
+                cs.interval_start AS valid_from,
+                cs.consumption,
+                cs.generation,
+                t.import_value,
+                t.export_value,
+                COALESCE(si.cost_incentive, 0.0) AS cost_incentive,
+                COALESCE(si.sale_incentive, 0.0) AS sale_incentive,
+                COALESCE(si.cost_incentive / NULLIF(cs.consumption, 0.0), si.schedule_import_incentive, 0.0) AS import_incentive,
+                COALESCE(si.sale_incentive / NULLIF(cs.generation, 0.0), 0.0) AS export_incentive
+
+            FROM consumption_sum cs
+            JOIN tariffs t ON t.valid_from = cs.interval_start
+            LEFT JOIN slot_incentives si ON si.valid_from = cs.interval_start
         )
 
         SELECT
-            strftime('%H:%M', cs.interval_start) as t_30m,
-            t.import_value as import_rate,
-            t.export_value as export_rate,
-            SUM(cs.consumption) as consumption,
-            SUM(cs.generation) as generation
+            strftime('%H:%M', valid_from) AS t_30m,
+            import_value AS import_rate,
+            export_value AS export_rate,
+            SUM(consumption) AS consumption,
+            SUM(generation) AS generation,
+            import_incentive,
+            export_incentive
 
-        FROM consumption_sum cs
-
-        JOIN tariffs t
-          ON t.valid_from = cs.interval_start
+        FROM slot_prices
 
         WHERE
-            cs.interval_start >= ? -- start
-        AND cs.interval_start <  ? -- end
-        AND t.import_value IS NOT NULL
-        AND t.export_value IS NOT NULL
+            valid_from >= ? -- start
+        AND valid_from <  ? -- end
+        AND import_value IS NOT NULL
+        AND export_value IS NOT NULL
 
-        GROUP BY t_30m, import_rate
-        ORDER BY t_30m ASC, import_rate DESC;"
+        -- Incentive rates split a time-of-day bucket like a distinct tariff
+        -- rate would, so effective prices are never averaged together.
+        GROUP BY t_30m, import_rate, export_rate, import_incentive, export_incentive
+        ORDER BY t_30m ASC, import_rate + import_incentive DESC;"
     )
         .bind(&start)
         .bind(&end)
@@ -333,6 +497,8 @@ pub async fn consumption_by_time(
             export_rate: row.get(2),
             consumption: row.get(3),
             generation: row.get(4),
+            import_incentive: row.get(5),
+            export_incentive: row.get(6),
         };
         data.push(c);
     }
@@ -522,6 +688,31 @@ mod tests {
         Ok(())
     }
 
+    async fn insert_promotion(
+        conn: &mut sqlx::SqliteConnection,
+        event_id: &str,
+        event_type: &str,
+        start_at: &str,
+        end_at: &str,
+        reward_octopoints: Option<i64>,
+        free_import_kwh_cap: Option<f32>,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            "INSERT INTO promotion_events
+                (account, event_id, event_type, start_at, end_at, reward_octopoints, free_import_kwh_cap)
+             VALUES ('A', ?1, ?2, ?3, ?4, ?5, ?6)"
+        )
+            .bind(event_id)
+            .bind(event_type)
+            .bind(start_at)
+            .bind(end_at)
+            .bind(reward_octopoints)
+            .bind(free_import_kwh_cap)
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
+    }
+
     /// The 48 UTC half-hour slots of `date`, each with tariff rates and a
     /// consumption row. Returns the slot keys in order.
     async fn seed_half_hour_day(
@@ -542,6 +733,24 @@ mod tests {
         Ok(slots)
     }
 
+    async fn seed_half_hour_days(
+        conn: &mut sqlx::SqliteConnection,
+        dates: &[&str],
+        import: f32,
+        export: f32,
+        consumption: f32,
+    ) -> Result<Vec<String>, Error> {
+        let mut slots = Vec::new();
+        for date in dates {
+            slots.extend(seed_half_hour_day(conn, date, import, export, consumption).await?);
+        }
+        Ok(slots)
+    }
+
+    fn rfc3339(c: &Consumption) -> String {
+        c.timestamp.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    }
+
     fn sum_of(data: &[Consumption], f: impl Fn(&Consumption) -> f32) -> f32 {
         data.iter().map(f).sum()
     }
@@ -560,7 +769,7 @@ mod tests {
     // script renames a column, this fails here rather than at runtime.
     #[tokio::test]
     async fn migrate_provides_every_table_the_endpoint_queries() -> Result<(), Error> {
-        use crate::migrate::{require_columns, SqlType::{Real, Text}};
+        use crate::migrate::{require_columns, SqlType::{Integer, Real, Text}};
         use sqlx::Connection;
 
         let mut conn = sqlx::SqliteConnection::connect("sqlite::memory:").await?;
@@ -597,6 +806,12 @@ mod tests {
 
         require_columns(&mut conn, "versioning", &[
             ("key", Text), ("value", Text),
+        ]).await?;
+
+        require_columns(&mut conn, "promotion_events", &[
+            ("account", Text), ("event_id", Text), ("event_type", Text),
+            ("start_at", Text), ("end_at", Text),
+            ("reward_octopoints", Integer), ("free_import_kwh_cap", Real),
         ]).await?;
 
         Ok(())
@@ -897,7 +1112,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn totals_are_conserved_across_all_three_windows() -> Result<(), Error> {
+    async fn totals_are_conserved_across_every_window() -> Result<(), Error> {
         let db = TestDb::new().await?;
         let mut conn = db.conn().await?;
 
@@ -911,16 +1126,26 @@ mod tests {
                 insert_carcharge(&mut conn, "C1", slot, 0.05).await?;
             }
         }
+        // Events straddle 1h bucket edges so pro-rata shares land in different buckets.
+        insert_consumption(&mut conn, "B", "2026-10-25T17:30:00Z", 0.0, 0.3).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-10-25T11:30:00Z", "2026-10-25T12:30:00Z", None, Some(16.0)).await?;
+        insert_promotion(&mut conn, "2", "TURN_DOWN", "2026-10-25T17:00:00Z", "2026-10-25T18:30:00Z", Some(240), None).await?;
+        insert_promotion(&mut conn, "3", "TURN_UP", "2026-10-25T03:30:00Z", "2026-10-25T05:00:00Z", Some(120), None).await?;
         drop(conn);
 
         let half = db.ok("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", "30m").await;
         let hour = db.ok("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", "1h").await;
         let day = db.ok("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", "1d").await;
+        let week = db.ok("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", "1w").await;
 
-        assert_eq!((half.len(), hour.len(), day.len()), (48, 24, 1), "bucket counts for 30m/1h/1d");
+        assert_eq!(
+            (half.len(), hour.len(), day.len(), week.len()),
+            (48, 24, 1, 1),
+            "bucket counts for 30m/1h/1d/1w",
+        );
 
         // Re-bucketing may only regroup energy, never create or destroy it.
-        let fields: [(&str, fn(&Consumption) -> f32); 8] = [
+        let fields: [(&str, fn(&Consumption) -> f32); 10] = [
             ("consumption", |c| c.consumption),
             ("generation", |c| c.generation),
             ("cost", |c| c.cost),
@@ -929,13 +1154,118 @@ mod tests {
             ("discharge", |c| c.discharge),
             ("solar_generation", |c| c.solar_generation),
             ("car_charge", |c| c.car_charge),
+            ("cost_incentive", |c| c.cost_incentive),
+            ("sale_incentive", |c| c.sale_incentive),
         ];
+
+        assert_close(sum_of(&half, |c| c.cost_incentive), -2.0 * 0.1 * 10.0 - 15.0, "happy hour + TURN_UP incentives present");
+        assert_close(sum_of(&half, |c| c.sale_incentive), 30.0, "TURN_DOWN incentive present");
 
         for (name, f) in fields {
             let expected = sum_of(&half, f);
             assert_close(sum_of(&hour, f), expected, &format!("{name} total must survive 1h bucketing"));
             assert_close(sum_of(&day, f), expected, &format!("{name} total must survive 1d bucketing"));
+            assert_close(sum_of(&week, f), expected, &format!("{name} total must survive 1w bucketing"));
         }
+
+        Ok(())
+    }
+
+    // Fri/Sat/Sun of the week beginning Mon 2026-10-19, then Mon/Tue of the
+    // week beginning Mon 2026-10-26. Nothing starts on a Monday, so a bucket
+    // key that merely truncated to the first day present would be wrong, and
+    // the first week contains the 2026-10-25 BST->GMT transition.
+    const TWO_WEEKS: [&str; 5] = [
+        "2026-10-23", "2026-10-24", "2026-10-25",
+        "2026-10-26", "2026-10-27",
+    ];
+
+    #[tokio::test]
+    async fn week_window_buckets_to_the_iso_monday() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_half_hour_days(&mut conn, &TWO_WEEKS, 10.0, 5.0, 0.1).await?;
+        drop(conn);
+
+        let data = db.ok("2026-10-23T00:00:00Z", "2026-10-28T00:00:00Z", "1w").await;
+
+        assert_eq!(data.len(), 2, "five days spanning two ISO weeks give two buckets");
+        assert_eq!(
+            data.iter().map(rfc3339).collect::<Vec<_>>(),
+            ["2026-10-19T00:00:00Z", "2026-10-26T00:00:00Z"],
+            "each 1w bucket must be labelled with its own ISO (Monday) week start, \
+             in a form str2dt can parse",
+        );
+
+        // 3 days then 2 days, 48 half-hours of 0.1 kWh each.
+        assert_close(data[0].consumption, 3.0 * 48.0 * 0.1, "first week's consumption");
+        assert_close(data[1].consumption, 2.0 * 48.0 * 0.1, "second week's consumption");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn week_window_joins_battery_solar_and_car() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        let slots = seed_half_hour_days(&mut conn, &TWO_WEEKS, 10.0, 5.0, 0.1).await?;
+        for slot in &slots {
+            insert_charge(&mut conn, "INV1", slot, 0.02, 0.01).await?;
+            insert_solar(&mut conn, "S1", slot, 0.04).await?;
+            insert_carcharge(&mut conn, "C1", slot, 0.05).await?;
+        }
+        drop(conn);
+
+        let data = db.ok("2026-10-23T00:00:00Z", "2026-10-28T00:00:00Z", "1w").await;
+        assert_eq!(data.len(), 2);
+
+        // The bucket key is written out separately in each of the four source
+        // CTEs and the outer SELECT joins them on string equality, so a
+        // mismatched 1w expression in one of them coalesces that source to 0.0
+        // for every bucket instead of failing.
+        for (i, (week, days)) in data.iter().zip([3.0_f32, 2.0]).enumerate() {
+            let slots_in_week = days * 48.0;
+            assert_close(week.charge, slots_in_week * 0.02, &format!("week {i} charge"));
+            assert_close(week.discharge, slots_in_week * 0.01, &format!("week {i} discharge"));
+            assert_close(week.solar_generation, slots_in_week * 0.04, &format!("week {i} solar"));
+            assert_close(week.car_charge, slots_in_week * 0.05, &format!("week {i} car charge"));
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn week_cost_reconciles_with_half_hour_slots() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // One whole ISO week with all the consumption in cheap negative-price
+        // overnight slots. An unweighted AVG over the week's schedule would
+        // flip the sign, and at this bucket size it is the least visible.
+        for date in ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22",
+                     "2026-10-23", "2026-10-24", "2026-10-25"] {
+            for i in 0..48u32 {
+                let minutes = i * 30;
+                let slot = format!("{date}T{:02}:{:02}:00Z", minutes / 60, minutes % 60);
+                let overnight = i < 10;
+                insert_rates(&mut conn, &slot, if overnight { -5.0 } else { 30.0 }, 5.0).await?;
+                insert_consumption(&mut conn, "A", &slot, if overnight { 2.0 } else { 0.0 }, 0.0).await?;
+            }
+        }
+        drop(conn);
+
+        let week = db.ok("2026-10-19T00:00:00Z", "2026-10-26T00:00:00Z", "1w").await;
+        let half = db.ok("2026-10-19T00:00:00Z", "2026-10-26T00:00:00Z", "30m").await;
+
+        assert_eq!(week.len(), 1, "a whole ISO week collapses to a single 1w bucket");
+        assert_eq!(half.len(), 7 * 48, "the 2026-10-25 DST day is still 48 UTC half-hours");
+
+        assert_close(week[0].consumption, 7.0 * 10.0 * 2.0, "7 days of 10 overnight slots at 2.0 kWh");
+        assert!(week[0].cost < 0.0, "a week consumed entirely at negative prices must report negative cost");
+        assert_close(week[0].import_rate, -5.0, "the effective rate is the price actually paid");
+        assert_close(week[0].cost, sum_of(&half, |c| c.cost), "1w cost must reconcile with the 30m slots");
+        assert_close(week[0].sale, sum_of(&half, |c| c.sale), "1w sale must reconcile with the 30m slots");
 
         Ok(())
     }
@@ -944,12 +1274,16 @@ mod tests {
     async fn invalid_window_is_rejected() -> Result<(), Error> {
         let db = TestDb::new().await?;
 
-        let status = db
-            .get("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", Some("15m"))
-            .await
-            .expect_err("an unsupported window must be rejected");
+        // "1wk" is the near-miss the SQL would silently treat as 30m -- the
+        // CASE falls through to its ELSE arm rather than erroring.
+        for window in ["15m", "1wk", "1W"] {
+            let status = db
+                .get("2026-10-25T00:00:00Z", "2026-10-26T00:00:00Z", Some(window))
+                .await
+                .expect_err("an unsupported window must be rejected");
 
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(status, StatusCode::BAD_REQUEST, "window {window:?}");
+        }
         Ok(())
     }
 
@@ -1251,6 +1585,332 @@ mod tests {
         assert_close(data[0].import_rate, 10.0, "import rate from the IMPORT product");
         assert_close(data[0].export_rate, 5.0, "export rate from the EXPORT product");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn consumption_by_time_splits_out_happy_hour_slots() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // Same time of day and tariff on two days; only the second is a happy hour.
+        for slot in ["2026-11-21T11:00:00Z", "2026-11-22T11:00:00Z"] {
+            insert_rates(&mut conn, slot, 20.0, 5.0).await?;
+            insert_consumption(&mut conn, "A", slot, 2.0, 0.0).await?;
+        }
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", None, Some(16.0)).await?;
+        drop(conn);
+
+        let query = ConsumptionByTimeQuery {
+            start: "2026-11-21T00:00:00Z".to_string(),
+            end: "2026-11-23T00:00:00Z".to_string(),
+        };
+        let Json(data) = consumption_by_time(State(db.app.clone()), Query(query))
+            .await
+            .expect("consumption-by-time request should succeed");
+
+        assert_eq!(data.len(), 2, "the happy hour slot must not be merged with the tariff-priced one");
+        assert_close(data[0].import_incentive, 0.0, "most expensive effective rate first");
+        assert_close(data[1].import_rate, 20.0, "base rate is still the tariff");
+        assert_close(data[1].import_incentive, -20.0, "happy hour makes the effective rate 0");
+        assert_close(data[0].consumption + data[1].consumption, 4.0, "energy is split, not duplicated");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn price_distribution_reports_incentives_per_slot() -> Result<(), Error> {
+        use crate::api::price_distribution;
+        use crate::api::price_distribution::PriceDistributionQuery;
+
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // Two accounts on one slot: one row per half-hour, summed, as in the
+        // consumption endpoint.
+        let slot = "2026-11-22T11:00:00Z";
+        insert_rates(&mut conn, slot, 20.0, 5.0).await?;
+        insert_consumption(&mut conn, "A", slot, 1.0, 0.5).await?;
+        insert_consumption(&mut conn, "B", slot, 2.0, 0.5).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", slot, "2026-11-22T11:30:00Z", None, Some(16.0)).await?;
+        insert_promotion(&mut conn, "2", "TURN_DOWN", slot, "2026-11-22T11:30:00Z", Some(80), None).await?;
+        drop(conn);
+
+        let query = PriceDistributionQuery {
+            start: slot.to_string(),
+            end: "2026-11-22T11:30:00Z".to_string(),
+        };
+        let Json(data) = price_distribution(State(db.app.clone()), Query(query))
+            .await
+            .expect("price-distribution request should succeed");
+        let json = serde_json::to_value(&data)?;
+
+        assert_eq!(data.len(), 1, "one row per half-hour, not per account");
+        let row = &json[0];
+        let f = |k: &str| row[k].as_f64().unwrap() as f32;
+        assert_close(f("consumption"), 3.0, "summed across accounts");
+        assert_close(f("cost"), 60.0, "tariff cost");
+        assert_close(f("cost_incentive"), -60.0, "happy hour credit");
+        assert_close(f("import_incentive"), -20.0, "happy hour per-kWh");
+        assert_close(f("sale_incentive"), 10.0, "80 points = 10p");
+        assert_close(f("export_incentive"), 10.0, "10p over 1 kWh exported");
+        Ok(())
+    }
+
+    // The slot-pricing CTEs are written out in full in each handler's query.
+    // This fails if one copy is edited without the others.
+    #[tokio::test]
+    async fn every_handler_prices_saving_sessions_identically() -> Result<(), Error> {
+        use crate::api::price_distribution;
+        use crate::api::price_distribution::PriceDistributionQuery;
+
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // 20 kWh across two accounts against a 16 kWh cap, plus a TURN_DOWN.
+        let slot = "2026-11-22T11:00:00Z";
+        let end = "2026-11-22T11:30:00Z";
+        insert_rates(&mut conn, slot, 20.0, 5.0).await?;
+        insert_consumption(&mut conn, "A", slot, 12.0, 0.5).await?;
+        insert_consumption(&mut conn, "B", slot, 8.0, 1.5).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", slot, end, None, Some(16.0)).await?;
+        insert_promotion(&mut conn, "2", "TURN_DOWN", slot, end, Some(160), None).await?;
+        drop(conn);
+
+        let expected_cost_incentive = -20.0 * 20.0 * 0.8;
+        let expected_sale_incentive = 20.0;
+
+        let main = db.ok(slot, end, "30m").await;
+        assert_eq!(main.len(), 1);
+        assert_close(main[0].cost_incentive, expected_cost_incentive, "consumption cost_incentive");
+        assert_close(main[0].sale_incentive, expected_sale_incentive, "consumption sale_incentive");
+
+        let query = ConsumptionByTimeQuery { start: slot.to_string(), end: end.to_string() };
+        let Json(by_time) = consumption_by_time(State(db.app.clone()), Query(query))
+            .await
+            .expect("consumption-by-time request should succeed");
+        assert_eq!(by_time.len(), 1);
+
+        let query = PriceDistributionQuery { start: slot.to_string(), end: end.to_string() };
+        let Json(distribution) = price_distribution(State(db.app.clone()), Query(query))
+            .await
+            .expect("price-distribution request should succeed");
+        let distribution = serde_json::to_value(&distribution)?;
+        let dist = |k: &str| distribution[0][k].as_f64().unwrap() as f32;
+
+        assert_close(dist("cost_incentive"), expected_cost_incentive, "price-distribution cost_incentive");
+        assert_close(dist("sale_incentive"), expected_sale_incentive, "price-distribution sale_incentive");
+
+        for (name, value) in [
+            ("consumption-by-time import_incentive", by_time[0].import_incentive),
+            ("price-distribution import_incentive", dist("import_incentive")),
+        ] {
+            assert_close(value, main[0].import_incentive, name);
+        }
+        for (name, value) in [
+            ("consumption-by-time export_incentive", by_time[0].export_incentive),
+            ("price-distribution export_incentive", dist("export_incentive")),
+        ] {
+            assert_close(value, main[0].export_incentive, name);
+        }
+        Ok(())
+    }
+
+    // ---- promotions (Saving Sessions) -------------------------------------
+
+    #[tokio::test]
+    async fn happy_hour_zeroes_effective_import_but_keeps_base_rate() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_half_hour_day(&mut conn, "2026-11-22", 25.0, 5.0, 0.5).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", None, Some(16.0)).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-22T10:30:00Z", "2026-11-22T12:30:00Z", "30m").await;
+        assert_eq!(data.len(), 4);
+
+        for row in &data[1..3] {
+            assert_close(row.import_rate, 25.0, "base import_rate stays the tariff price");
+            assert_close(row.cost, 0.5 * 25.0, "base cost stays the tariff cost");
+            assert_close(row.cost + row.cost_incentive, 0.0, "happy hour import is free");
+            assert_close(row.import_rate + row.import_incentive, 0.0, "effective import rate is 0");
+        }
+        for row in [&data[0], &data[3]] {
+            assert_close(row.cost_incentive, 0.0, &format!("{} is outside the happy hour", rfc3339(row)));
+            assert_close(row.import_incentive, 0.0, &format!("{} is outside the happy hour", rfc3339(row)));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn happy_hour_free_allowance_is_capped_pro_rata() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // 20 kWh in the hour against a 16 kWh cap: 80% of each slot is free.
+        for (slot, kwh) in [("2026-11-22T11:00:00Z", 15.0), ("2026-11-22T11:30:00Z", 5.0)] {
+            insert_rates(&mut conn, slot, 20.0, 5.0).await?;
+            insert_consumption(&mut conn, "A", slot, kwh, 0.0).await?;
+        }
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", None, Some(16.0)).await?;
+        drop(conn);
+
+        let half = db.ok("2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", "30m").await;
+        assert_close(half[0].cost_incentive, -15.0 * 20.0 * 0.8, "first slot's share of the cap");
+        assert_close(half[1].cost_incentive, -5.0 * 20.0 * 0.8, "second slot's share of the cap");
+        assert_close(half[0].import_incentive, -16.0, "80% of the 20p rate");
+
+        let hour = db.ok("2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", "1h").await;
+        assert_close(hour[0].cost_incentive, -16.0 * 20.0, "exactly 16 kWh is free across the hour");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn happy_hour_with_no_meter_data_reports_free_schedule_rate() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // A booked future happy hour: tariffs are published, meter data isn't.
+        insert_rates(&mut conn, "2026-11-29T11:00:00Z", 22.0, 5.0).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-29T11:00:00Z", "2026-11-29T12:00:00Z", None, Some(16.0)).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-29T11:00:00Z", "2026-11-29T11:30:00Z", "30m").await;
+        assert_eq!(data.len(), 1);
+        assert_close(data[0].cost_incentive, 0.0, "nothing consumed, nothing credited");
+        assert_close(data[0].import_rate + data[0].import_incentive, 0.0, "the planned price is still free");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn turn_down_reward_boosts_export_weighted_by_generation() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        for (slot, export) in [("2026-11-17T17:00:00Z", 3.0), ("2026-11-17T17:30:00Z", 1.0)] {
+            insert_rates(&mut conn, slot, 30.0, 15.0).await?;
+            insert_consumption(&mut conn, "A", slot, 0.0, export).await?;
+        }
+        // 800 points = 100p.
+        insert_promotion(&mut conn, "1", "TURN_DOWN", "2026-11-17T17:00:00Z", "2026-11-17T18:00:00Z", Some(800), None).await?;
+        drop(conn);
+
+        let half = db.ok("2026-11-17T17:00:00Z", "2026-11-17T18:00:00Z", "30m").await;
+        assert_close(half[0].sale_incentive, 75.0, "3 of 4 exported kWh");
+        assert_close(half[1].sale_incentive, 25.0, "1 of 4 exported kWh");
+        assert_close(half[0].export_incentive, 25.0, "100p over 4 kWh");
+        assert_close(half[0].export_rate, 15.0, "base export rate is unchanged");
+        assert_close(half[0].cost_incentive, 0.0, "Power Down doesn't touch import");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn turn_down_reward_without_export_is_spread_evenly() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        for slot in ["2026-11-17T17:00:00Z", "2026-11-17T17:30:00Z"] {
+            insert_rates(&mut conn, slot, 30.0, 15.0).await?;
+            insert_consumption(&mut conn, "A", slot, 0.1, 0.0).await?;
+        }
+        insert_promotion(&mut conn, "1", "TURN_DOWN", "2026-11-17T17:00:00Z", "2026-11-17T18:00:00Z", Some(800), None).await?;
+        drop(conn);
+
+        let half = db.ok("2026-11-17T17:00:00Z", "2026-11-17T18:00:00Z", "30m").await;
+        assert_close(half[0].sale_incentive, 50.0, "half the reward per slot");
+        assert_close(half[1].sale_incentive, 50.0, "half the reward per slot");
+        assert_close(half[0].export_incentive, 0.0, "no exported kWh to price");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unsettled_turn_down_reward_contributes_nothing() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        insert_rates(&mut conn, "2026-11-17T17:00:00Z", 30.0, 15.0).await?;
+        insert_consumption(&mut conn, "A", "2026-11-17T17:00:00Z", 0.0, 1.0).await?;
+        insert_promotion(&mut conn, "1", "TURN_DOWN", "2026-11-17T17:00:00Z", "2026-11-17T17:30:00Z", None, None).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-17T17:00:00Z", "2026-11-17T17:30:00Z", "30m").await;
+        assert_close(data[0].sale_incentive, 0.0, "a NULL reward is 0, not NULL");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn turn_up_reward_reduces_import_weighted_by_consumption() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        for (slot, kwh) in [("2026-11-18T13:00:00Z", 4.0), ("2026-11-18T13:30:00Z", 1.0)] {
+            insert_rates(&mut conn, slot, 10.0, 5.0).await?;
+            insert_consumption(&mut conn, "A", slot, kwh, 0.0).await?;
+        }
+        // 400 points = 50p.
+        insert_promotion(&mut conn, "1", "TURN_UP", "2026-11-18T13:00:00Z", "2026-11-18T14:00:00Z", Some(400), None).await?;
+        drop(conn);
+
+        let half = db.ok("2026-11-18T13:00:00Z", "2026-11-18T14:00:00Z", "30m").await;
+        assert_close(half[0].cost_incentive, -40.0, "4 of 5 imported kWh");
+        assert_close(half[1].cost_incentive, -10.0, "1 of 5 imported kWh");
+        assert_close(half[0].import_incentive, -10.0, "50p over 5 kWh");
+        assert_close(half[0].sale_incentive, 0.0, "Power Up doesn't touch export");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_event_types_are_stored_but_unpriced() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        insert_rates(&mut conn, "2026-11-18T13:00:00Z", 10.0, 5.0).await?;
+        insert_consumption(&mut conn, "A", "2026-11-18T13:00:00Z", 1.0, 1.0).await?;
+        insert_promotion(&mut conn, "1", "FREE_ELECTRICITY", "2026-11-18T13:00:00Z", "2026-11-18T13:30:00Z", Some(800), Some(16.0)).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-18T13:00:00Z", "2026-11-18T13:30:00Z", "30m").await;
+        assert_eq!(data.len(), 1, "an unpriced event must not drop or duplicate the slot");
+        for (name, v) in [
+            ("import_incentive", data[0].import_incentive),
+            ("export_incentive", data[0].export_incentive),
+            ("cost_incentive", data[0].cost_incentive),
+            ("sale_incentive", data[0].sale_incentive),
+        ] {
+            assert_close(v, 0.0, name);
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn overlapping_events_do_not_fan_out_the_slot() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        insert_rates(&mut conn, "2026-11-22T11:00:00Z", 20.0, 5.0).await?;
+        insert_consumption(&mut conn, "A", "2026-11-22T11:00:00Z", 2.0, 1.0).await?;
+        // A happy hour and a TURN_DOWN touching the same half-hour.
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-22T11:00:00Z", "2026-11-22T11:30:00Z", None, Some(16.0)).await?;
+        insert_promotion(&mut conn, "2", "TURN_DOWN", "2026-11-22T11:00:00Z", "2026-11-22T11:30:00Z", Some(80), None).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-22T11:00:00Z", "2026-11-22T11:30:00Z", "30m").await;
+        assert_eq!(data.len(), 1);
+        assert_close(data[0].consumption, 2.0, "consumption isn't multiplied by the number of events");
+        assert_close(data[0].cost, 40.0, "base cost isn't multiplied by the number of events");
+        assert_close(data[0].cost_incentive, -40.0, "happy hour");
+        assert_close(data[0].sale_incentive, 10.0, "TURN_DOWN");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn promotions_outside_the_range_do_not_leak_in() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_half_hour_day(&mut conn, "2026-11-22", 20.0, 5.0, 1.0).await?;
+        insert_promotion(&mut conn, "1", "WEEKEND_HAPPY_HOUR", "2026-11-22T11:00:00Z", "2026-11-22T12:00:00Z", None, Some(16.0)).await?;
+        drop(conn);
+
+        // The 1h bucket at 12:00 starts exactly at the event's exclusive end.
+        let data = db.ok("2026-11-22T12:00:00Z", "2026-11-22T14:00:00Z", "1h").await;
+        assert_eq!(data.len(), 2);
+        assert_close(sum_of(&data, |c| c.cost_incentive), 0.0, "end_at is exclusive");
         Ok(())
     }
 }

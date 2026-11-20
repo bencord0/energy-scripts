@@ -2,7 +2,7 @@ import * as d3 from '/js/d3.esm.min.js';
 import * as Plot from '/js/plot.esm.min.js';
 import { getConsumption, getStandingCharge, getAgilePredictions, getTimeWindow } from '/js/db.js';
 import { priceColors, addStripes } from '/js/colors.js';
-import { formatCost, getTimeWindowInfo, weekStartUTC } from '/js/utils.js';
+import { applyIncentives, formatCost, getTimeWindowInfo, weekStartUTC } from '/js/utils.js';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -76,7 +76,7 @@ async function render() {
     data = data.map(d => {
         const timestamp = new Date(d.timestamp);
         return {
-            ...d,
+            ...applyIncentives(d),
             timestamp,
         };
     });
@@ -178,14 +178,14 @@ async function render() {
         ...data.map(d => d.car_charge || 0),
         ...usageRows.map(d => d.y2 || 0),
         ...data.map(d => d.cost / scaleFactor || 0),
-        ...data.map(d => d.import_rate / scaleFactor || 0),
+        ...data.map(d => d.tariff_import_rate / scaleFactor || 0),
         ...pricePredictions.map(d => d.import_prediction / scaleFactor || 0),
     );
     const dataMinY = Math.max(
         ...data.map(d => d.generation || 0),
         ...data.map(d => d.discharge || 0),
         ...data.map(d => d.sale / scaleFactor || 0),
-        ...data.map(d => d.export_rate / scaleFactor || 0),
+        ...data.map(d => d.tariff_export_rate / scaleFactor || 0),
         ...pricePredictions.map(d => d.export_prediction / scaleFactor || 0),
     );
     const yMax = Math.max(maxKWh, dataMaxY * 1.05); // 5% headroom
@@ -290,6 +290,8 @@ async function render() {
                 mixBlendMode: "multiply",
                 inset: 0,
                 shapeRendering: "crispEdges",
+                // https://observablehq.com/plot/features/marks#mark-options
+                clip: true,
             }),
             // Export Price
             Plot.rectY(data, {
@@ -301,6 +303,7 @@ async function render() {
                 mixBlendMode: "multiply",
                 inset: 0,
                 shapeRendering: "crispEdges",
+                clip: true,
             }),
             // Grid Consumption
             Plot.lineY(data, {
@@ -399,6 +402,7 @@ async function render() {
                         standingChargeFraction = standingChargeForDate(timestamp);
                     }
                     const totalSlotCost = (d.cost || 0) + standingChargeFraction - (d.sale || 0);
+                    const savingSession = d.cost_incentive || d.sale_incentive || d.import_incentive;
                     return [
                         timeWindow === '1w'
                             ? `Week of: ${d3.timeFormat("%b %d")(timestamp)}`
@@ -415,6 +419,11 @@ async function render() {
                         `Export Sale: ${formatCost((d.sale || 0))}`,
                         `Standing Charge: ${standingChargeFraction.toFixed(2)} p`,
                         `Total Cost: ${formatCost(totalSlotCost)}`,
+                        ...(savingSession ? [
+                            `Tariff Import: ${(d.tariff_import_rate || 0).toFixed(2)} p/kWh, ${formatCost(d.tariff_cost || 0)}`,
+                            `Tariff Export: ${(d.tariff_export_rate || 0).toFixed(2)} p/kWh, ${formatCost(d.tariff_sale || 0)}`,
+                            `Saving Sessions: ${formatCost(d.sale_incentive - d.cost_incentive)} credit`,
+                        ] : []),
                     ].join("\n");
                 }
             })),
@@ -451,6 +460,8 @@ async function render() {
 
     // Calculate total sale (export)
     const totalSale = data.reduce((sum, d) => sum + (d.sale || 0), 0);
+
+    const savingSessionsCredit = data.reduce((sum, d) => sum + (d.sale_incentive || 0) - (d.cost_incentive || 0), 0);
 
     // Calculate net cost
     const netCost = totalCost - totalSale;
@@ -531,6 +542,9 @@ async function render() {
 
     const costStandingChargeElem = document.getElementById('val-cost-standing-charge');
     if (costStandingChargeElem) costStandingChargeElem.textContent = formatCost(standingCharge);
+
+    const savingSessionsElem = document.getElementById('val-saving-sessions');
+    if (savingSessionsElem) savingSessionsElem.textContent = formatCost(savingSessionsCredit);
 
     // Export section
     const saleTotalElem = document.getElementById('val-sale-total');

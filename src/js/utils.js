@@ -22,3 +22,22 @@ export function weekStartUTC(date) {
     d.setUTCDate(d.getUTCDate() - mondayOffset);
     return d;
 }
+
+// Replaces the tariff-only price fields from the API with the price after
+// Saving Sessions (Happy Hours, Power Down/Up rewards).
+const incentiveFields = [
+    ['import_rate', 'import_incentive'],
+    ['export_rate', 'export_incentive'],
+    ['cost', 'cost_incentive'],
+    ['sale', 'sale_incentive'],
+];
+
+export function applyIncentives(d) {
+    const corrected = { ...d };
+    for (const [field, incentive] of incentiveFields) {
+        if (d[field] === undefined) continue;
+        corrected[`tariff_${field}`] = d[field];
+        corrected[field] = d[field] + (d[incentive] || 0);
+    }
+    return corrected;
+}
