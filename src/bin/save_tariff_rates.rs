@@ -227,8 +227,9 @@ async fn timeslots(
         .collect()
 }
 
-/// Smart-charge dispatches overlapping `window`. Planned ones only count for
-/// slots not yet started; later runs re-price them once completed (or not).
+/// Smart-charge dispatches overlapping `window`. Planned ones count until they
+/// end, including while in progress; later runs re-price them once completed
+/// (or not).
 async fn dispatches(
     conn: &mut SqliteConnection,
     window: &TimeRange,
@@ -242,7 +243,7 @@ async fn dispatches(
         FROM intelligent_dispatches
         WHERE start_at < ?
           AND end_at   > ?
-          AND (status = 'completed' OR start_at >= ?)"
+          AND (status = 'completed' OR end_at > ?)"
     )
         .bind(dt2str(window.end))
         .bind(dt2str(window.start))
