@@ -11,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+use crate::dates::str2dt;
+
 const KRAKEN_URL: &str = "https://api.octopus.energy/v1/graphql/";
 const BACKEND_URL: &str = "https://api.backend.octopus.energy/v1/graphql/";
 
@@ -182,7 +184,9 @@ impl KrakenClient {
                 Some(&token),
             )
             .await;
-        Ok(or_empty_without_device(data)?.completed_dispatches.unwrap_or_default())
+        let mut dispatches = or_empty_without_device(data)?.completed_dispatches.unwrap_or_default();
+        sort_by_start(&mut dispatches, |d| &d.start)?;
+        Ok(dispatches)
     }
 
     /// Same shape as completed dispatches; only covers the coming schedule.
@@ -203,7 +207,9 @@ impl KrakenClient {
                 Some(&token),
             )
             .await;
-        Ok(or_empty_without_device(data)?.planned_dispatches.unwrap_or_default())
+        let mut dispatches = or_empty_without_device(data)?.planned_dispatches.unwrap_or_default();
+        sort_by_start(&mut dispatches, |d| &d.start)?;
+        Ok(dispatches)
     }
 
     pub async fn flex_planned_dispatches(&mut self, device_id: &str) -> Result<Vec<PlannedDispatch>, Error> {
@@ -223,7 +229,9 @@ impl KrakenClient {
                 Some(&token),
             )
             .await;
-        Ok(or_empty_without_device(data)?.flex_planned_dispatches.unwrap_or_default())
+        let mut dispatches = or_empty_without_device(data)?.flex_planned_dispatches.unwrap_or_default();
+        sort_by_start(&mut dispatches, |d| &d.start)?;
+        Ok(dispatches)
     }
 
     async fn post<T: DeserializeOwned>(
@@ -498,6 +506,15 @@ pub struct PlannedDispatch {
     pub energy_added_kwh: Option<f64>,
 }
 
+/// Kraken has no ordering argument, and offsets vary, so compare parsed instants.
+fn sort_by_start<T>(items: &mut [T], start: impl Fn(&T) -> &str) -> Result<(), Error> {
+    for item in items.iter() {
+        str2dt(start(item))?;
+    }
+    items.sort_by_cached_key(|item| str2dt(start(item)).ok());
+    Ok(())
+}
+
 fn opt_f64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
     match Value::deserialize(deserializer)? {
         Value::Null => Ok(None),
@@ -672,6 +689,37 @@ mod tests {
         let meta = dispatches[0].meta.as_ref().unwrap();
         assert_eq!((meta.location.as_deref(), meta.source.as_deref()), (None, Some("smart-charge")));
         Ok(())
+    }
+
+    #[test]
+    fn dispatches_sort_by_instant() -> Result<(), Error> {
+        let body = r#"{
+            "data": {
+                "plannedDispatches": [
+                    {"start": "2026-11-24T02:00:00+00:00", "end": "2026-11-24T03:00:00+00:00"},
+                    {"start": "2026-11-24T01:00:00+01:00", "end": "2026-11-24T01:30:00+01:00"},
+                    {"start": "2026-11-24T00:30:00+00:00", "end": "2026-11-24T01:00:00+00:00"}
+                ]
+            }
+        }"#;
+
+        let response: GraphQLResponse<PlannedDispatchesData> = serde_json::from_str(body)?;
+        let mut dispatches = response.into_result()?.planned_dispatches.unwrap();
+        sort_by_start(&mut dispatches, |d| &d.start)?;
+
+        let starts: Vec<_> = dispatches.iter().map(|d| d.start.as_str()).collect();
+        assert_eq!(starts, [
+            "2026-11-24T01:00:00+01:00",
+            "2026-11-24T00:30:00+00:00",
+            "2026-11-24T02:00:00+00:00",
+        ], "ordered by instant, not by string");
+        Ok(())
+    }
+
+    #[test]
+    fn unparsable_dispatch_start_fails_sort() {
+        let mut starts = [String::from("2026-11-24T00:30:00+00:00"), String::from("soon")];
+        assert!(sort_by_start(&mut starts, |s| s).is_err());
     }
 
     #[test]

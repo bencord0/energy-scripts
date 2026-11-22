@@ -106,7 +106,10 @@ async fn save_dispatches(
         .execute(&mut *tx)
         .await?;
 
-    for (status, dispatches) in [("planned", planned), ("completed", completed)] {
+    for (status, dispatches) in [
+            ("completed", completed),
+            ("planned", planned),
+        ] {
         if dispatches.is_empty() {
             println!("No {status} dispatches for {account_id}");
         }
