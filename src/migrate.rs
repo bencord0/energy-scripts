@@ -129,6 +129,70 @@ const V6_SCHEMA: &str = "BEGIN;
 
     COMMIT;";
 
+// Version 7
+//
+// Support switching tariffs.
+// agreements track which tariff applies at each switch
+// tariff_rates keeps every fetched tariff
+// billed_tariff_rates is a view of each slot that is active
+const V7_SCHEMA: &str = "BEGIN;
+
+    CREATE TABLE IF NOT EXISTS agreements (
+        mpan         TEXT NOT NULL,
+        type         TEXT NOT NULL, -- IMPORT or EXPORT
+        tariff_code  TEXT NOT NULL,
+        product_code TEXT NOT NULL,
+        valid_from   TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+        valid_to     TEXT,          -- timestamp, use UTC date arithmetic; NULL while open-ended
+        PRIMARY KEY (mpan, valid_from)
+    );
+    CREATE INDEX IF NOT EXISTS agreements_tariff_code ON agreements(tariff_code);
+
+    -- Intelligent Octopus smart-charge windows, billed at the off-peak rate.
+    CREATE TABLE IF NOT EXISTS intelligent_dispatches (
+        account   TEXT NOT NULL,
+        start_at  TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+        end_at    TEXT NOT NULL, -- timestamp, use UTC date arithmetic
+        delta_kwh REAL,
+        source    TEXT,          -- smart-charge, bump-charge, ...
+        location  TEXT,
+        PRIMARY KEY (account, start_at)
+    );
+    CREATE INDEX IF NOT EXISTS intelligent_dispatches_start_at ON intelligent_dispatches(start_at);
+
+    CREATE VIEW IF NOT EXISTS billed_tariff_rates AS
+        SELECT
+            r.product_code,
+            r.tariff_code,
+            r.valid_from,
+            r.valid_to,
+            r.value,
+            r.daily_standing_charge,
+            a.type
+        FROM tariff_rates AS r
+        JOIN agreements AS a
+          ON a.tariff_code = r.tariff_code
+         AND r.valid_from >= a.valid_from
+         AND (a.valid_to IS NULL OR r.valid_from < a.valid_to);
+
+    COMMIT;";
+
+// Version 9
+//
+// Time-of-use windows per agreement, in local wall-clock time. Only published
+// for tariffs whose unit rates don't carry their own windows (e.g. the day and
+// night rates of Intelligent Octopus Go).
+const V9_SCHEMA: &str = "
+    CREATE TABLE IF NOT EXISTS agreement_timeslots (
+        mpan        TEXT NOT NULL,
+        valid_from  TEXT NOT NULL, -- agreements.valid_from
+        timeslot    TEXT NOT NULL, -- e.g. ECO7_DAY, ECO7_NIGHT
+        timezone    TEXT NOT NULL, -- IANA name, e.g. Europe/London
+        active_from TEXT NOT NULL, -- local time, HH:MM:SS
+        active_to   TEXT NOT NULL, -- local time, HH:MM:SS; before active_from when it spans midnight
+        PRIMARY KEY (mpan, valid_from, timeslot, active_from)
+    );";
+
 pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
     let mut version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(&mut *conn)
@@ -165,8 +229,29 @@ pub async fn migrate(conn: &mut SqliteConnection) -> Result<(), Error> {
         version = 6;
     }
 
+    if version < 7 {
+        sqlx::query::<Sqlite>(V7_SCHEMA).execute(&mut *conn).await?;
+        version = 7;
+    }
+
+    if version < 8 {
+        // Provenance of consumption/generation: 'octopus' (billed meter data)
+        // or 'givenergy' (provisional). NULL predates tracking and is treated
+        // as Octopus. Import and export arrive separately, hence two columns.
+        add_column_if_missing(conn, "consumption", "consumption_source", "TEXT").await?;
+        add_column_if_missing(conn, "consumption", "generation_source", "TEXT").await?;
+        // 'planned' rows are replaced by 'completed' ones as dispatches finish.
+        add_column_if_missing(conn, "intelligent_dispatches", "status", "TEXT NOT NULL DEFAULT 'completed'").await?;
+        version = 8;
+    }
+
+    if version < 9 {
+        sqlx::query::<Sqlite>(V9_SCHEMA).execute(&mut *conn).await?;
+        version = 9;
+    }
+
     // Next migration step goes here:
-    // if version < 7 { ...; version = 7; }
+    // if version < 10 { ...; version = 10; }
 
     // PRAGMA can't take bind params; `version` is an internal constant.
     sqlx::query(&format!("PRAGMA user_version = {version}"))
@@ -295,7 +380,7 @@ mod tests {
         let version: i64 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(&mut conn)
             .await?;
-        assert_eq!(version, 6);
+        assert_eq!(version, 9);
         Ok(())
     }
 

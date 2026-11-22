@@ -6,6 +6,10 @@ use chrono::{
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
 use eyre::Error;
+use crate::{
+    dates::dt2str,
+    times::TimeRange,
+};
 
 const ISO_FORMAT: &str = "%Y-%m-%dT00:00:00Z";
 
@@ -54,7 +58,8 @@ impl OctopusClient {
         eprintln!("period_to  : {period_to}");
 
         let url = format!("https://api.octopus.energy/v1/electricity-meter-points/{mpan}/meters/{serial}/consumption");
-        let response = reqwest::Client::new()
+        let client = reqwest::Client::new();
+        let response = client
             .get(url)
             .basic_auth(&self.api_key, None::<&str>)
             .timeout(Duration::from_secs(5))
@@ -62,11 +67,29 @@ impl OctopusClient {
                 ("period_from", period_from),
                 ("period_to", period_to),
                 ("order_by", String::from("period")),
+                ("page_size", String::from("25000")),
             ])
             .send()
             .await?;
 
-        let consumption: Consumption = response.json().await?;
+        // Results arrive unordered despite `order_by`, so offset pages overlap  and skip slots.
+        // The maximum page size (~520 days) avoids paging in practice.
+        // https://developer.octopus.energy/rest/reference/#tag/v1/operation/List%20Consumption%20for%20an%20Electricity%20Meter
+        let mut consumption: Consumption = response.json().await?;
+        while let Some(next) = consumption.next.take() {
+            eprintln!("WARNING: consumption paging is unstable, consider a shorter period");
+            let page: Consumption = client.get(next)
+                .basic_auth(&self.api_key, None::<&str>)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await?
+                .json()
+                .await?;
+            consumption.results.extend(page.results);
+            consumption.next = page.next;
+        }
+        consumption.results.sort_by(|a, b| a.interval_start.cmp(&b.interval_start));
+        consumption.results.dedup_by(|a, b| a.interval_start == b.interval_start);
         eprintln!("CONSUMPTION: {consumption:#?}");
         Ok(consumption)
     }
@@ -74,18 +97,43 @@ impl OctopusClient {
     pub async fn get_product_unit_rates(&self, product_code: &str, tariff_code: &str)
         -> Result<TariffRates, Error>
     {
-        let url = format!("https://api.octopus.energy/v1/products/{product_code}/electricity-tariffs/{tariff_code}/standard-unit-rates/");
+        self.get_unit_rates(UnitRateKind::Standard, product_code, tariff_code, None).await
+    }
 
-        // TODO: implement params = { page: ... }
+    /// Follows `next` until exhausted when `period` is given, otherwise returns
+    /// the first (most recent) page.
+    /// https://developer.octopus.energy/rest/reference/#tag/v1/operation/List%20Electricity%20Tariff%20Standard%20Unit%20Rates
+    pub async fn get_unit_rates(
+        &self, kind: UnitRateKind, product_code: &str, tariff_code: &str,
+        period: Option<&TimeRange>,
+    ) -> Result<TariffRates, Error>
+    {
+        let endpoint = kind.endpoint();
+        let url = format!("https://api.octopus.energy/v1/products/{product_code}/electricity-tariffs/{tariff_code}/{endpoint}/");
+
         // TODO: Reuse client between calls
-        let response = reqwest::Client::new()
-            .get(url)
-            .timeout(Duration::from_secs(5))
-            .send()
-            .await?;
+        let client = reqwest::Client::new();
+        let mut request = client.get(url).timeout(Duration::from_secs(5));
+        if let Some(period) = period {
+            request = request.query(&[
+                ("period_from", dt2str(period.start)),
+                ("period_to", dt2str(period.end)),
+                ("page_size", String::from("1500")),
+            ]);
+        }
 
-        let tariff_rates: TariffRates = response.json().await?;
-        eprintln!("TARIFF RATES: {tariff_rates:#?}");
+        let mut tariff_rates: TariffRates = request.send().await?.json().await?;
+        while period.is_some() && let Some(next) = tariff_rates.next.take() {
+            let page: TariffRates = client.get(next)
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await?
+                .json()
+                .await?;
+            tariff_rates.results.extend(page.results);
+            tariff_rates.next = page.next;
+        }
+        eprintln!("TARIFF RATES ({endpoint}): {tariff_rates:#?}");
         Ok(tariff_rates)
     }
 
@@ -118,9 +166,26 @@ impl OctopusClient {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitRateKind {
+    Standard,
+    Day,
+    Night,
+}
+
+impl UnitRateKind {
+    fn endpoint(self) -> &'static str {
+        match self {
+            UnitRateKind::Standard => "standard-unit-rates",
+            UnitRateKind::Day => "day-unit-rates",
+            UnitRateKind::Night => "night-unit-rates",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Consumption {
-    pub count: u16,
+    pub count: u32,
     pub next: Option<String>,
     pub previous: Option<String>,
     pub results: Vec<ConsumptionResult>,
@@ -193,7 +258,7 @@ pub struct AccountProperty {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ElectricityMeterPoint {
     pub mpan: String,
-    pub profile_class: u32,
+    pub profile_class: Option<u32>,
     pub is_export: bool,
     pub meters: Vec<Meter>,
     pub agreements: Vec<Agreement>,

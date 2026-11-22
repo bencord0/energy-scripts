@@ -1,0 +1,126 @@
+{
+  "count": 17,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-26T19:00:00Z",
+      "valid_to": "2026-10-27T02:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 37.409,
+      "value_inc_vat": 37.409,
+      "valid_from": "2026-10-26T16:00:00Z",
+      "valid_to": "2026-10-26T19:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-26T05:00:00Z",
+      "valid_to": "2026-10-26T16:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 16.1769,
+      "value_inc_vat": 16.1769,
+      "valid_from": "2026-10-26T02:00:00Z",
+      "valid_to": "2026-10-26T05:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-25T19:00:00Z",
+      "valid_to": "2026-10-26T02:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 37.409,
+      "value_inc_vat": 37.409,
+      "valid_from": "2026-10-25T16:00:00Z",
+      "valid_to": "2026-10-25T19:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-25T05:00:00Z",
+      "valid_to": "2026-10-25T16:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 16.1769,
+      "value_inc_vat": 16.1769,
+      "valid_from": "2026-10-25T02:00:00Z",
+      "valid_to": "2026-10-25T05:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-24T18:00:00Z",
+      "valid_to": "2026-10-25T02:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 37.409,
+      "value_inc_vat": 37.409,
+      "valid_from": "2026-10-24T15:00:00Z",
+      "valid_to": "2026-10-24T18:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-24T04:00:00Z",
+      "valid_to": "2026-10-24T15:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 16.1769,
+      "value_inc_vat": 16.1769,
+      "valid_from": "2026-10-24T01:00:00Z",
+      "valid_to": "2026-10-24T04:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-23T18:00:00Z",
+      "valid_to": "2026-10-24T01:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 37.409,
+      "value_inc_vat": 37.409,
+      "valid_from": "2026-10-23T15:00:00Z",
+      "valid_to": "2026-10-23T18:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-23T04:00:00Z",
+      "valid_to": "2026-10-23T15:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 16.1769,
+      "value_inc_vat": 16.1769,
+      "valid_from": "2026-10-23T01:00:00Z",
+      "valid_to": "2026-10-23T04:00:00Z",
+      "payment_method": null
+    },
+    {
+      "value_exc_vat": 26.793,
+      "value_inc_vat": 26.793,
+      "valid_from": "2026-10-22T18:00:00Z",
+      "valid_to": "2026-10-23T01:00:00Z",
+      "payment_method": null
+    }
+  ]
+}

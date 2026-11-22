@@ -1,15 +1,21 @@
 // Kraken GraphQL client for account data the REST API doesn't expose.
 //
-// The Saving Sessions schema is undocumented; field names follow
+// The Saving Sessions and dispatch schemas are undocumented; field names follow
 // https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy/blob/develop/custom_components/octopus_energy/api_client/__init__.py
 // Reference for the documented parts: https://developer.octopus.energy/graphql/
 use eyre::{Error, OptionExt, eyre};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
-use std::time::Duration;
+use std::{
+    fmt,
+    time::Duration,
+};
 
 const KRAKEN_URL: &str = "https://api.octopus.energy/v1/graphql/";
 const BACKEND_URL: &str = "https://api.backend.octopus.energy/v1/graphql/";
+
+// "Unable to find device for given account": no smart device is paired.
+const NO_DEVICE: &str = "KT-CT-4301";
 
 pub struct KrakenClient {
     http: reqwest::Client,
@@ -85,6 +91,141 @@ impl KrakenClient {
         Ok(data.saving_sessions)
     }
 
+    /// Including inactive agreements; unlike the REST accounts endpoint, each
+    /// tariff carries its productCode, and time-of-use tariffs their windows.
+    pub async fn electricity_agreements(&mut self, account_number: &str) -> Result<Vec<MeterPointAgreements>, Error> {
+        let token = self.obtain_token().await?;
+        let data: AgreementsData = self
+            .post(
+                KRAKEN_URL,
+                "query Agreements($accountNumber: String!) {
+                    account(accountNumber: $accountNumber) {
+                        properties {
+                            electricityMeterPoints {
+                                mpan
+                                agreements(includeInactive: true) {
+                                    validFrom
+                                    validTo
+                                    timeOfUseScheme {
+                                        name
+                                        timezone
+                                        timeslots {
+                                            timeslot
+                                            activeFrom
+                                            activeTo
+                                            weekdays
+                                            weekends
+                                            saturdays
+                                            sundays
+                                            workdays
+                                            holidays
+                                        }
+                                    }
+                                    tariff {
+                                        ... on StandardTariff { tariffCode productCode }
+                                        ... on DayNightTariff { tariffCode productCode }
+                                        ... on ThreeRateTariff { tariffCode productCode }
+                                        ... on HalfHourlyTariff { tariffCode productCode }
+                                        ... on PrepayTariff { tariffCode productCode }
+                                        ... on FourRateEvTariff { tariffCode productCode }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }",
+                json!({ "accountNumber": account_number }),
+                Some(&token),
+            )
+            .await?;
+        Ok(data.account.properties.into_iter()
+            .flat_map(|p| p.electricity_meter_points)
+            .collect())
+    }
+
+    pub async fn devices(&mut self, account_number: &str) -> Result<Vec<Device>, Error> {
+        let token = self.obtain_token().await?;
+        let data: DevicesData = self
+            .post(
+                KRAKEN_URL,
+                "query Devices($accountNumber: String!) {
+                    devices(accountNumber: $accountNumber) {
+                        id
+                        name
+                        deviceType
+                        provider
+                        status { current currentState isSuspended }
+                    }
+                }",
+                json!({ "accountNumber": account_number }),
+                Some(&token),
+            )
+            .await?;
+        Ok(data.devices)
+    }
+
+    /// Recent history only; callers persist it.
+    pub async fn completed_dispatches(&mut self, account_number: &str) -> Result<Vec<Dispatch>, Error> {
+        let token = self.obtain_token().await?;
+        let data: Result<CompletedDispatchesData, Error> = self
+            .post(
+                KRAKEN_URL,
+                "query CompletedDispatches($accountNumber: String!) {
+                    completedDispatches(accountNumber: $accountNumber) {
+                        start
+                        end
+                        delta
+                        meta { location source }
+                    }
+                }",
+                json!({ "accountNumber": account_number }),
+                Some(&token),
+            )
+            .await;
+        Ok(or_empty_without_device(data)?.completed_dispatches.unwrap_or_default())
+    }
+
+    /// Same shape as completed dispatches; only covers the coming schedule.
+    pub async fn planned_dispatches(&mut self, account_number: &str) -> Result<Vec<Dispatch>, Error> {
+        let token = self.obtain_token().await?;
+        let data: Result<PlannedDispatchesData, Error> = self
+            .post(
+                KRAKEN_URL,
+                "query PlannedDispatches($accountNumber: String!) {
+                    plannedDispatches(accountNumber: $accountNumber) {
+                        start
+                        end
+                        delta
+                        meta { location source }
+                    }
+                }",
+                json!({ "accountNumber": account_number }),
+                Some(&token),
+            )
+            .await;
+        Ok(or_empty_without_device(data)?.planned_dispatches.unwrap_or_default())
+    }
+
+    pub async fn flex_planned_dispatches(&mut self, device_id: &str) -> Result<Vec<PlannedDispatch>, Error> {
+        let token = self.obtain_token().await?;
+        let data: Result<FlexPlannedDispatchesData, Error> = self
+            .post(
+                KRAKEN_URL,
+                "query FlexPlannedDispatches($deviceId: String!) {
+                    flexPlannedDispatches(deviceId: $deviceId) {
+                        start
+                        end
+                        type
+                        energyAddedKwh
+                    }
+                }",
+                json!({ "deviceId": device_id }),
+                Some(&token),
+            )
+            .await;
+        Ok(or_empty_without_device(data)?.flex_planned_dispatches.unwrap_or_default())
+    }
+
     async fn post<T: DeserializeOwned>(
         &self,
         url: &str,
@@ -121,17 +262,53 @@ struct GraphQLResponse<T> {
 }
 
 #[derive(Deserialize, Debug)]
-struct GraphQLError {
-    message: String,
+pub struct GraphQLError {
+    pub message: String,
+    pub extensions: Option<GraphQLErrorExtensions>,
 }
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphQLErrorExtensions {
+    pub error_code: Option<String>,
+}
+
+/// Kept typed inside the eyre report so callers can match on `errorCode`.
+#[derive(Debug)]
+pub struct GraphQLErrors(pub Vec<GraphQLError>);
+
+impl GraphQLErrors {
+    pub fn has_code(&self, code: &str) -> bool {
+        self.0.iter().any(|e| {
+            e.extensions.as_ref().and_then(|x| x.error_code.as_deref()) == Some(code)
+        })
+    }
+}
+
+impl fmt::Display for GraphQLErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let messages: Vec<&str> = self.0.iter().map(|e| e.message.as_str()).collect();
+        write!(f, "graphql: {}", messages.join("; "))
+    }
+}
+
+impl std::error::Error for GraphQLErrors {}
 
 impl<T> GraphQLResponse<T> {
     fn into_result(self) -> Result<T, Error> {
         if !self.errors.is_empty() {
-            let messages: Vec<String> = self.errors.into_iter().map(|e| e.message).collect();
-            return Err(eyre!("graphql: {}", messages.join("; ")));
+            return Err(GraphQLErrors(self.errors).into());
         }
         self.data.ok_or_eyre("graphql: response has neither data nor errors")
+    }
+}
+
+fn or_empty_without_device<T: Default>(result: Result<T, Error>) -> Result<T, Error> {
+    match result {
+        Err(e) if e.downcast_ref::<GraphQLErrors>().is_some_and(|g| g.has_code(NO_DEVICE)) => {
+            Ok(T::default())
+        }
+        other => other,
     }
 }
 
@@ -192,6 +369,144 @@ pub struct JoinedEvent {
     pub reward_given_in_octo_points: Option<i64>,
 }
 
+#[derive(Deserialize, Debug)]
+struct AgreementsData {
+    account: AgreementsAccount,
+}
+
+#[derive(Deserialize, Debug)]
+struct AgreementsAccount {
+    properties: Vec<AgreementsProperty>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct AgreementsProperty {
+    electricity_meter_points: Vec<MeterPointAgreements>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MeterPointAgreements {
+    pub mpan: String,
+    pub agreements: Vec<KrakenAgreement>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct KrakenAgreement {
+    pub valid_from: String,
+    pub valid_to: Option<String>,
+    pub time_of_use_scheme: Option<TimeOfUseScheme>,
+    pub tariff: KrakenTariff,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TimeOfUseScheme {
+    pub name: String,
+    pub timezone: String,
+    pub timeslots: Vec<TimeOfUseTimeslot>,
+}
+
+/// The day flags are all false when a timeslot applies every day.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeOfUseTimeslot {
+    pub timeslot: String,
+    pub active_from: String,
+    pub active_to: String,
+    pub weekdays: bool,
+    pub weekends: bool,
+    pub saturdays: bool,
+    pub sundays: bool,
+    pub workdays: bool,
+    pub holidays: bool,
+}
+
+impl TimeOfUseTimeslot {
+    pub fn is_every_day(&self) -> bool {
+        ![self.weekdays, self.weekends, self.saturdays, self.sundays, self.workdays, self.holidays]
+            .contains(&true)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct KrakenTariff {
+    pub tariff_code: String,
+    pub product_code: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct DevicesData {
+    #[serde(default)]
+    devices: Vec<Device>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Device {
+    pub id: String,
+    pub name: Option<String>,
+    pub device_type: Option<String>,
+    pub provider: Option<String>,
+    pub status: Option<Value>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+struct CompletedDispatchesData {
+    completed_dispatches: Option<Vec<Dispatch>>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+struct PlannedDispatchesData {
+    planned_dispatches: Option<Vec<Dispatch>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Dispatch {
+    pub start: String,
+    pub end: String,
+    /// kWh, negative while charging. Seen as both a string and a number.
+    #[serde(default, deserialize_with = "opt_f64")]
+    pub delta: Option<f64>,
+    #[serde(default)]
+    pub meta: Option<DispatchMeta>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DispatchMeta {
+    pub location: Option<String>,
+    /// `smart-charge`, `bump-charge`, ...
+    pub source: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+struct FlexPlannedDispatchesData {
+    flex_planned_dispatches: Option<Vec<PlannedDispatch>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedDispatch {
+    pub start: String,
+    pub end: String,
+    pub r#type: Option<String>,
+    #[serde(default, deserialize_with = "opt_f64")]
+    pub energy_added_kwh: Option<f64>,
+}
+
+fn opt_f64<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+    match Value::deserialize(deserializer)? {
+        Value::Null => Ok(None),
+        Value::Number(n) => Ok(n.as_f64()),
+        Value::String(s) => s.parse().map(Some).map_err(serde::de::Error::custom),
+        other => Err(serde::de::Error::custom(format!("unexpected number: {other}"))),
+    }
+}
+
 /// GraphQL `ID`s may be serialised as either strings or integers.
 fn id_string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
     match Value::deserialize(deserializer)? {
@@ -204,6 +519,42 @@ fn id_string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Er
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agreements_response_deserializes() -> Result<(), Error> {
+        let body = r#"{
+            "data": {"account": {"properties": [{"electricityMeterPoints": [{
+                "mpan": "1",
+                "agreements": [
+                    {"validFrom": "2025-12-27T00:00:00+00:00", "validTo": "2026-11-22T00:00:00+00:00",
+                     "timeOfUseScheme": null,
+                     "tariff": {"__typename": "HalfHourlyTariff",
+                                "productCode": "AGILE-24-10-01", "tariffCode": "E-1R-AGILE-24-10-01-A"}},
+                    {"validFrom": "2026-11-22T00:00:00+00:00", "validTo": null,
+                     "timeOfUseScheme": {"name": "IOG_ECO7_TOU", "timezone": "Europe/London", "timeslots": [
+                        {"timeslot": "ECO7_DAY", "activeFrom": "05:30:00", "activeTo": "23:30:00",
+                         "weekdays": false, "weekends": false, "saturdays": false, "sundays": false,
+                         "workdays": false, "holidays": false},
+                        {"timeslot": "ECO7_NIGHT", "activeFrom": "23:30:00", "activeTo": "05:30:00",
+                         "weekdays": false, "weekends": false, "saturdays": false, "sundays": false,
+                         "workdays": false, "holidays": false}
+                     ]},
+                     "tariff": {"__typename": "HalfHourlyTariff",
+                                "productCode": "IOG-SMB-VAR-26-10-29", "tariffCode": "E-1R-IOG-SMB-VAR-26-10-29-A"}}
+                ]
+            }]}]}}
+        }"#;
+        let data: GraphQLResponse<AgreementsData> = serde_json::from_str(body)?;
+        let points = data.into_result()?.account.properties.remove(0).electricity_meter_points;
+        let agreements = &points[0].agreements;
+        assert_eq!(agreements[1].tariff.product_code, "IOG-SMB-VAR-26-10-29");
+        assert_eq!(agreements[1].valid_to, None);
+        assert!(agreements[0].time_of_use_scheme.is_none());
+        let scheme = agreements[1].time_of_use_scheme.as_ref().ok_or_eyre("scheme")?;
+        assert_eq!(scheme.timeslots[1].active_from, "23:30:00");
+        assert!(scheme.timeslots.iter().all(TimeOfUseTimeslot::is_every_day));
+        Ok(())
+    }
 
     #[test]
     fn saving_sessions_response_deserializes() -> Result<(), Error> {
@@ -272,5 +623,79 @@ mod tests {
 
         let response: GraphQLResponse<ObtainToken> = serde_json::from_str(body).unwrap();
         assert!(response.into_result().is_err());
+    }
+
+    #[test]
+    fn completed_dispatches_deserialize() -> Result<(), Error> {
+        let body = r#"{
+            "data": {
+                "completedDispatches": [
+                    {"start": "2026-11-22T14:00:00+00:00", "end": "2026-11-22T15:00:00+00:00",
+                     "delta": "-3.5", "meta": {"location": "AT_HOME", "source": "smart-charge"}},
+                    {"start": "2026-11-22T16:00:00+00:00", "end": "2026-11-22T16:30:00+00:00",
+                     "delta": -1.25, "meta": {"location": null, "source": "bump-charge"}},
+                    {"start": "2026-11-22T17:00:00+00:00", "end": "2026-11-22T17:30:00+00:00"}
+                ]
+            }
+        }"#;
+
+        let response: GraphQLResponse<CompletedDispatchesData> = serde_json::from_str(body)?;
+        let dispatches = response.into_result()?.completed_dispatches.unwrap();
+
+        assert_eq!(dispatches[0].delta, Some(-3.5), "string delta is parsed");
+        assert_eq!(dispatches[1].delta, Some(-1.25), "numeric delta passes through");
+        assert_eq!(dispatches[1].meta.as_ref().unwrap().source.as_deref(), Some("bump-charge"));
+        assert!(dispatches[2].delta.is_none() && dispatches[2].meta.is_none(), "missing fields are tolerated");
+        Ok(())
+    }
+
+    #[test]
+    fn planned_dispatches_deserialize() -> Result<(), Error> {
+        // First schedule after pairing the Ohme, 2026-11-22.
+        let body = r#"{
+            "data": {
+                "plannedDispatches": [
+                    {"delta": "-3.49", "end": "2026-11-22T22:30:00+00:00",
+                     "meta": {"location": null, "source": "smart-charge"},
+                     "start": "2026-11-22T22:00:00+00:00"},
+                    {"delta": "-2.48", "end": "2026-11-23T12:00:00+00:00",
+                     "meta": {"location": null, "source": "smart-charge"},
+                     "start": "2026-11-23T11:30:00+00:00"}
+                ]
+            }
+        }"#;
+
+        let response: GraphQLResponse<PlannedDispatchesData> = serde_json::from_str(body)?;
+        let dispatches = response.into_result()?.planned_dispatches.unwrap();
+        assert_eq!(dispatches.len(), 2);
+        assert_eq!(dispatches[0].delta, Some(-3.49));
+        let meta = dispatches[0].meta.as_ref().unwrap();
+        assert_eq!((meta.location.as_deref(), meta.source.as_deref()), (None, Some("smart-charge")));
+        Ok(())
+    }
+
+    #[test]
+    fn missing_device_means_no_dispatches() -> Result<(), Error> {
+        let body = r#"{
+            "data": {"completedDispatches": null},
+            "errors": [{"message": "Unable to find device for given account.",
+                        "extensions": {"errorType": "NOT_FOUND", "errorCode": "KT-CT-4301"}}]
+        }"#;
+
+        let response: GraphQLResponse<CompletedDispatchesData> = serde_json::from_str(body)?;
+        let data = or_empty_without_device(response.into_result())?;
+        assert!(data.completed_dispatches.unwrap_or_default().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn other_errors_still_fail_dispatches() {
+        let body = r#"{
+            "data": {"completedDispatches": null},
+            "errors": [{"message": "Unauthorized.", "extensions": {"errorCode": "KT-CT-1111"}}]
+        }"#;
+
+        let response: GraphQLResponse<CompletedDispatchesData> = serde_json::from_str(body).unwrap();
+        assert!(or_empty_without_device(response.into_result()).is_err());
     }
 }

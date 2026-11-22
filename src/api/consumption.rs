@@ -72,21 +72,14 @@ pub async fn consumption(
         tariffs AS (
             SELECT
                 i.valid_from,
-                AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
-                AVG(CASE WHEN pe.type='EXPORT' THEN e.value END) AS export_value
+                AVG(CASE WHEN i.type='IMPORT' THEN i.value END) AS import_value,
+                AVG(CASE WHEN e.type='EXPORT' THEN e.value END) AS export_value
 
-            FROM tariff_rates i
+            -- Only the tariff an agreement covers is billed for each slot.
+            FROM billed_tariff_rates i
 
-            JOIN tariff_rates e
+            JOIN billed_tariff_rates e
               ON i.valid_from = e.valid_from
-
-            JOIN products pi
-              ON i.product_code = pi.product_code
-             AND i.tariff_code = pi.tariff_code
-
-            JOIN products pe
-              ON e.product_code = pe.product_code
-             AND e.tariff_code = pe.tariff_code
 
            GROUP BY i.valid_from
         ),
@@ -352,21 +345,14 @@ pub async fn consumption_by_time(
         tariffs AS (
             SELECT
                 i.valid_from,
-                AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
-                AVG(CASE WHEN pe.type='EXPORT' THEN e.value END) AS export_value
+                AVG(CASE WHEN i.type='IMPORT' THEN i.value END) AS import_value,
+                AVG(CASE WHEN e.type='EXPORT' THEN e.value END) AS export_value
 
-            FROM tariff_rates i
+            -- Only the tariff an agreement covers is billed for each slot.
+            FROM billed_tariff_rates i
 
-            JOIN tariff_rates e
+            JOIN billed_tariff_rates e
               ON i.valid_from = e.valid_from
-
-            JOIN products pi
-              ON i.product_code = pi.product_code
-             AND i.tariff_code = pi.tariff_code
-
-            JOIN products pe
-              ON e.product_code = pe.product_code
-             AND e.tariff_code = pe.tariff_code
 
            GROUP BY i.valid_from
         ),
@@ -544,6 +530,9 @@ mod tests {
                 "INSERT INTO products (product_code, tariff_code, type, standing_charge)
                  VALUES ('P', 'IMP', 'IMPORT', 50.0), ('P', 'EXP', 'EXPORT', 0.0)"
             ).execute(&mut *conn).await?;
+            // Open-ended agreements so every IMP/EXP slot is billed.
+            insert_agreement(&mut conn, "IMPORT", "IMP", "2000-01-01T00:00:00Z", None).await?;
+            insert_agreement(&mut conn, "EXPORT", "EXP", "2000-01-01T00:00:00Z", None).await?;
             drop(conn);
 
             Ok(Self { app, _keepalive: keepalive })
@@ -574,6 +563,28 @@ mod tests {
                 .await
                 .expect("consumption request should succeed")
         }
+    }
+
+    async fn insert_agreement(
+        conn: &mut sqlx::SqliteConnection,
+        tariff_type: &str,
+        tariff_code: &str,
+        valid_from: &str,
+        valid_to: Option<&str>,
+    ) -> Result<(), Error> {
+        let mpan = if tariff_type == "IMPORT" { "MPAN-I" } else { "MPAN-E" };
+        sqlx::query(
+            "INSERT OR REPLACE INTO agreements (mpan, type, tariff_code, product_code, valid_from, valid_to)
+             VALUES (?1, ?2, ?3, 'P', ?4, ?5)"
+        )
+            .bind(mpan)
+            .bind(tariff_type)
+            .bind(tariff_code)
+            .bind(valid_from)
+            .bind(valid_to)
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
     }
 
     async fn insert_tariff_rate(
@@ -787,6 +798,21 @@ mod tests {
 
         require_columns(&mut conn, "products", &[
             ("product_code", Text), ("tariff_code", Text), ("type", Text),
+        ]).await?;
+
+        require_columns(&mut conn, "agreements", &[
+            ("mpan", Text), ("type", Text), ("tariff_code", Text), ("product_code", Text),
+            ("valid_from", Text), ("valid_to", Text),
+        ]).await?;
+
+        require_columns(&mut conn, "intelligent_dispatches", &[
+            ("account", Text), ("start_at", Text), ("end_at", Text),
+            ("delta_kwh", Real), ("source", Text), ("location", Text),
+        ]).await?;
+
+        require_columns(&mut conn, "billed_tariff_rates", &[
+            ("tariff_code", Text), ("valid_from", Text), ("value", Real),
+            ("daily_standing_charge", Real), ("type", Text),
         ]).await?;
 
         require_columns(&mut conn, "solar_generation", &[
@@ -1039,7 +1065,8 @@ mod tests {
         let db = TestDb::new().await?;
         let mut conn = db.conn().await?;
 
-        // The live `products` table carries two IMPORT rows and one EXPORT.
+        // The live `products` table carries several IMPORT rows (Flexible,
+        // Agile, IOG), but only one agreement covers any slot.
         sqlx::query(
             "INSERT INTO products (product_code, tariff_code, type, standing_charge)
              VALUES ('P2', 'IMP2', 'IMPORT', 50.0)"
@@ -1557,7 +1584,7 @@ mod tests {
         let mut conn = db.conn().await?;
 
         // Same tariff double-join as the main handler, so give it two
-        // accounts and a second IMPORT product to fan out against.
+        // accounts and a second, unbilled, IMPORT product to fan out against.
         sqlx::query(
             "INSERT INTO products (product_code, tariff_code, type, standing_charge)
              VALUES ('P2', 'IMP2', 'IMPORT', 50.0)"
@@ -1712,6 +1739,131 @@ mod tests {
         ] {
             assert_close(value, main[0].export_incentive, name);
         }
+        Ok(())
+    }
+
+    // ---- tariff agreements --------------------------------------------------
+
+    #[tokio::test]
+    async fn slot_without_any_agreement_is_not_priced() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+
+        // Rates published for a tariff the account was never on.
+        let slot = "2026-06-01T12:00:00Z";
+        insert_tariff_rate_for(&mut conn, "AGILE", "AGILE-IMP", slot, 30.0).await?;
+        insert_tariff_rate_for(&mut conn, "AGILE", "AGILE-EXP", slot, 15.0).await?;
+        insert_consumption(&mut conn, "A", slot, 1.0, 0.0).await?;
+        drop(conn);
+
+        let data = db.ok(slot, "2026-06-01T12:30:00Z", "30m").await;
+        assert!(data.is_empty(), "unbilled tariff rows must not produce a slot: {data:?}");
+        Ok(())
+    }
+
+    /// Switch at midnight, with both tariffs published either side of it as
+    /// happens when the old tariff keeps being fetched for reference.
+    async fn seed_tariff_switch(conn: &mut sqlx::SqliteConnection) -> Result<(), Error> {
+        let switch = "2026-11-22T00:00:00Z";
+        sqlx::query("DELETE FROM agreements WHERE type = 'IMPORT'").execute(&mut *conn).await?;
+        insert_agreement(conn, "IMPORT", "AGILE", "2000-01-01T00:00:00Z", Some(switch)).await?;
+        sqlx::query(
+            "INSERT INTO agreements (mpan, type, tariff_code, product_code, valid_from, valid_to)
+             VALUES ('MPAN-I', 'IMPORT', 'IOG', 'P', ?1, NULL)"
+        ).bind(switch).execute(&mut *conn).await?;
+
+        for (slot, agile, iog) in [
+            ("2026-11-21T23:00:00Z", 30.0, 6.5),
+            ("2026-11-21T23:30:00Z", 32.0, 6.5),
+            ("2026-11-22T00:00:00Z", 28.0, 6.5),
+            ("2026-11-22T00:30:00Z", 26.0, 6.5),
+        ] {
+            sqlx::query(
+                "INSERT INTO tariff_rates (product_code, tariff_code, valid_from, value, daily_standing_charge)
+                 VALUES ('P', 'AGILE', ?1, ?2, 48.79), ('P', 'IOG', ?1, ?3, 51.94)"
+            ).bind(slot).bind(agile).bind(iog).execute(&mut *conn).await?;
+            insert_tariff_rate(conn, "EXP", slot, 15.0).await?;
+            insert_consumption(conn, "A", slot, 1.0, 0.0).await?;
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn tariff_switch_prices_each_side_from_its_agreement() -> Result<(), Error> {
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_tariff_switch(&mut conn).await?;
+        drop(conn);
+
+        let data = db.ok("2026-11-21T23:00:00Z", "2026-11-22T01:00:00Z", "30m").await;
+        let rates: Vec<f32> = data.iter().map(|d| d.import_rate).collect();
+        assert_eq!(rates, [30.0, 32.0, 6.5, 6.5], "Agile before the switch, IOG after");
+
+        let days = db.ok("2026-11-21T00:00:00Z", "2026-11-23T00:00:00Z", "1d").await;
+        assert_eq!(days.len(), 2);
+        assert_close(days[0].cost, 62.0, "21st billed on Agile only");
+        assert_close(days[1].cost, 13.0, "22nd billed on IOG only");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn standing_charge_follows_the_agreement() -> Result<(), Error> {
+        use crate::api::standing_charge::{standing_charge, StandingChargeQuery};
+
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_tariff_switch(&mut conn).await?;
+        drop(conn);
+
+        let query = StandingChargeQuery {
+            start: "2026-11-21T00:00:00Z".to_string(),
+            end: "2026-11-23T00:00:00Z".to_string(),
+            r#type: "IMPORT".to_string(),
+        };
+        let Json(data) = standing_charge(State(db.app.clone()), Query(query))
+            .await
+            .expect("standing-charge request should succeed");
+        let data = serde_json::to_value(&data)?;
+
+        assert_eq!(data.as_array().unwrap().len(), 2);
+        assert_close(data[0]["daily_standing_charge"].as_f64().unwrap() as f32, 48.79, "Agile standing charge");
+        assert_close(data[1]["daily_standing_charge"].as_f64().unwrap() as f32, 51.94, "IOG standing charge");
+        assert_eq!(data[0]["slots"], 2, "unbilled IOG rows must not be counted");
+        assert_eq!(data[1]["slots"], 2, "unbilled Agile rows must not be counted");
+        Ok(())
+    }
+
+    // billed_tariff_rates replaces the products join in every handler's
+    // tariffs CTE. This fails if one copy still reads tariff_rates directly.
+    #[tokio::test]
+    async fn every_handler_bills_only_the_agreed_tariff() -> Result<(), Error> {
+        use crate::api::price_distribution;
+        use crate::api::price_distribution::PriceDistributionQuery;
+
+        let db = TestDb::new().await?;
+        let mut conn = db.conn().await?;
+        seed_tariff_switch(&mut conn).await?;
+        drop(conn);
+
+        let (slot, end) = ("2026-11-22T00:00:00Z", "2026-11-22T00:30:00Z");
+
+        let main = db.ok(slot, end, "30m").await;
+        assert_close(main[0].import_rate, 6.5, "consumption import_rate");
+
+        let query = ConsumptionByTimeQuery { start: slot.to_string(), end: end.to_string() };
+        let Json(by_time) = consumption_by_time(State(db.app.clone()), Query(query))
+            .await
+            .expect("consumption-by-time request should succeed");
+        assert_eq!(by_time.len(), 1);
+        assert_close(by_time[0].import_rate, 6.5, "consumption-by-time import_rate");
+
+        let query = PriceDistributionQuery { start: slot.to_string(), end: end.to_string() };
+        let Json(distribution) = price_distribution(State(db.app.clone()), Query(query))
+            .await
+            .expect("price-distribution request should succeed");
+        let distribution = serde_json::to_value(&distribution)?;
+        assert_eq!(distribution.as_array().unwrap().len(), 1, "one billed price bucket");
+        assert_close(distribution[0]["import_rate"].as_f64().unwrap() as f32, 6.5, "price-distribution import_rate");
         Ok(())
     }
 

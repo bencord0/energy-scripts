@@ -50,21 +50,14 @@ pub async fn price_distribution(
         tariffs AS (
             SELECT
                 i.valid_from,
-                AVG(CASE WHEN pi.type='IMPORT' THEN i.value END) AS import_value,
-                AVG(CASE WHEN pe.type='EXPORT' THEN e.value END) AS export_value
+                AVG(CASE WHEN i.type='IMPORT' THEN i.value END) AS import_value,
+                AVG(CASE WHEN e.type='EXPORT' THEN e.value END) AS export_value
 
-            FROM tariff_rates i
+            -- Only the tariff an agreement covers is billed for each slot.
+            FROM billed_tariff_rates i
 
-            JOIN tariff_rates e
+            JOIN billed_tariff_rates e
               ON i.valid_from = e.valid_from
-
-            JOIN products pi
-              ON i.product_code = pi.product_code
-             AND i.tariff_code = pi.tariff_code
-
-            JOIN products pe
-              ON e.product_code = pe.product_code
-             AND e.tariff_code = pe.tariff_code
 
            GROUP BY i.valid_from
         ),

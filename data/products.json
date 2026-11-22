@@ -1,5 +1,5 @@
 {
-  "count": 35,
+  "count": 43,
   "next": null,
   "previous": null,
   "results": [
@@ -20,7 +20,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/AGILE-24-10-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/AGILE-24-10-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -44,7 +44,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/AGILE-OUTGOING-19-05-13/",
+          "href": "https://api.oegb-kraken.energy/v1/products/AGILE-OUTGOING-19-05-13/",
           "method": "GET",
           "rel": "self"
         }
@@ -52,11 +52,11 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "COOP-FIX-12M-26-02-06",
+      "code": "COOP-FIX-12M-26-11-09",
       "direction": "IMPORT",
-      "full_name": "Co-op 12M Fixed February 2026 v2",
+      "full_name": "Co-op 12M Fixed November 2026 v2",
       "display_name": "Co-op 12M Fixed",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months.  This tariff has a \u00a350 early exit fee per fuel.",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
@@ -64,11 +64,35 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2026-02-06T14:00:00Z",
+      "available_from": "2026-11-09T17:30:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-FIX-12M-26-02-06/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-FIX-12M-26-11-09/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "COOP_ENERGY"
+    },
+    {
+      "code": "COOP-FIX-18M-26-11-09",
+      "direction": "IMPORT",
+      "full_name": "Co-op 18M Fixed November 2026 v2",
+      "display_name": "Co-op 18M Fixed",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 18 months.  This tariff has a \u00a375 early exit fee per fuel.",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 18,
+      "available_from": "2026-11-09T17:30:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-FIX-18M-26-11-09/",
           "method": "GET",
           "rel": "self"
         }
@@ -92,7 +116,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-PP-VAR-20-04-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-PP-VAR-20-04-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -116,7 +140,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-SEG-EO-FIX-12M-24-04-05/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-SEG-EO-FIX-12M-24-04-05/",
           "method": "GET",
           "rel": "self"
         }
@@ -140,7 +164,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-SEG-FIX-12M-20-11-11/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-SEG-FIX-12M-20-11-11/",
           "method": "GET",
           "rel": "self"
         }
@@ -152,7 +176,7 @@
       "direction": "IMPORT",
       "full_name": "Co-op Flexible",
       "display_name": "Co-op Flexible",
-      "description": "Co-op Flexible prices follow wholesale costs and update every 3 months.",
+      "description": "Co-op Flexible prices fluctuate with the cost of supply and usually update every 3 months.",
       "is_variable": true,
       "is_green": false,
       "is_tracker": false,
@@ -164,7 +188,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COOP-VAR-23-04-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COOP-VAR-23-04-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -188,7 +212,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COSY-22-12-08/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COSY-22-12-08/",
           "method": "GET",
           "rel": "self"
         }
@@ -196,11 +220,11 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "COSY-FIX-12M-25-09-24",
+      "code": "COSY-FIX-12M-26-10-30",
       "direction": "IMPORT",
-      "full_name": "Cosy Octopus 12M Fixed September 2025 v1",
+      "full_name": "Cosy Octopus 12M Fixed October 2026 v2",
       "display_name": "Cosy Octopus 12M Fixed",
-      "description": "Cosy Octopus is a heat pump tariff with eight hours of super cheap electricity every day to warm your home.  This product has a \u00a325 exit fee.",
+      "description": "Cosy Octopus is a heat pump tariff with eight hours of super cheap electricity every day to warm your home.  This tariff has a \u00a350 exit fee.",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
@@ -208,11 +232,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2025-09-24T00:00:00+01:00",
+      "available_from": "2026-10-30T00:00:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/COSY-FIX-12M-25-09-24/",
+          "href": "https://api.oegb-kraken.energy/v1/products/COSY-FIX-12M-26-10-30/",
           "method": "GET",
           "rel": "self"
         }
@@ -220,11 +244,11 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "CP-12M-26-02-06",
+      "code": "CP-12M-26-11-09",
       "direction": "IMPORT",
-      "full_name": "Co-op Community Power 12M Fixed February 2026 v2",
+      "full_name": "Co-op Community Power November 2026 v2",
       "display_name": "Co-op Community Power",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months.  This tariff has a \u00a350 early exit fee per fuel.",
       "is_variable": false,
       "is_green": true,
       "is_tracker": false,
@@ -232,11 +256,35 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2026-02-06T14:00:00Z",
+      "available_from": "2026-11-09T17:30:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/CP-12M-26-02-06/",
+          "href": "https://api.oegb-kraken.energy/v1/products/CP-12M-26-11-09/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "COOP_ENERGY"
+    },
+    {
+      "code": "CP-18M-26-11-09",
+      "direction": "IMPORT",
+      "full_name": "Co-op Community Power 18M Fixed November 2026 v2",
+      "display_name": "Co-op Community Power 18M",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 18 months.  This tariff has a \u00a375 early exit fee per fuel.",
+      "is_variable": false,
+      "is_green": true,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 18,
+      "available_from": "2026-11-09T17:30:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/CP-18M-26-11-09/",
           "method": "GET",
           "rel": "self"
         }
@@ -260,7 +308,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/FLUX-EXPORT-23-02-14/",
+          "href": "https://api.oegb-kraken.energy/v1/products/FLUX-EXPORT-23-02-14/",
           "method": "GET",
           "rel": "self"
         }
@@ -284,7 +332,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/FLUX-IMPORT-23-02-14/",
+          "href": "https://api.oegb-kraken.energy/v1/products/FLUX-IMPORT-23-02-14/",
           "method": "GET",
           "rel": "self"
         }
@@ -292,11 +340,11 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "GO-FIX-12M-25-08-29",
+      "code": "GO-FIX-12M-26-10-30",
       "direction": "IMPORT",
-      "full_name": "Octopus Go 12M Fixed August 2025 v1",
+      "full_name": "Octopus Go 12M Fixed October 2026 v2",
       "display_name": "Octopus Go 12M Fixed",
-      "description": "The smart EV tariff with super cheap electricity between 00:30 - 05:30 every night",
+      "description": "The smart EV tariff with super cheap electricity between 00:30 - 05:30 every night.  This tariff has a \u00a350 exit fee.",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
@@ -304,11 +352,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2025-08-29T00:00:00+01:00",
+      "available_from": "2026-10-30T00:00:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/GO-FIX-12M-25-08-29/",
+          "href": "https://api.oegb-kraken.energy/v1/products/GO-FIX-12M-26-10-30/",
           "method": "GET",
           "rel": "self"
         }
@@ -332,55 +380,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/GO-VAR-22-10-14/",
-          "method": "GET",
-          "rel": "self"
-        }
-      ],
-      "brand": "OCTOPUS_ENERGY"
-    },
-    {
-      "code": "INTELLI-FIX-12M-25-08-29",
-      "direction": "IMPORT",
-      "full_name": "Intelligent Octopus Go 12M Fixed August 2025 v1",
-      "display_name": "Intelligent Octopus Go 12M Fixed",
-      "description": "With Intelligent Octopus Go EV tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times overnight.",
-      "is_variable": false,
-      "is_green": false,
-      "is_tracker": false,
-      "is_prepay": false,
-      "is_business": false,
-      "is_restricted": false,
-      "term": 12,
-      "available_from": "2025-08-29T00:00:00+01:00",
-      "available_to": null,
-      "links": [
-        {
-          "href": "https://api.octopus.energy/v1/products/INTELLI-FIX-12M-25-08-29/",
-          "method": "GET",
-          "rel": "self"
-        }
-      ],
-      "brand": "OCTOPUS_ENERGY"
-    },
-    {
-      "code": "INTELLI-FLUX-EXPORT-23-07-14",
-      "direction": "EXPORT",
-      "full_name": "Intelligent Octopus Flux Export",
-      "display_name": "Intelligent Octopus Flux Export",
-      "description": "Intelligent Octopus Flux Export v1",
-      "is_variable": true,
-      "is_green": false,
-      "is_tracker": false,
-      "is_prepay": false,
-      "is_business": false,
-      "is_restricted": false,
-      "term": null,
-      "available_from": "2023-07-13T00:00:00+01:00",
-      "available_to": null,
-      "links": [
-        {
-          "href": "https://api.octopus.energy/v1/products/INTELLI-FLUX-EXPORT-23-07-14/",
+          "href": "https://api.oegb-kraken.energy/v1/products/GO-VAR-22-10-14/",
           "method": "GET",
           "rel": "self"
         }
@@ -404,7 +404,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/INTELLI-FLUX-IMPORT-23-07-14/",
+          "href": "https://api.oegb-kraken.energy/v1/products/INTELLI-FLUX-IMPORT-23-07-14/",
           "method": "GET",
           "rel": "self"
         }
@@ -412,59 +412,11 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "INTELLI-VAR-24-10-29",
+      "code": "IOG-SMB-FIX-12M-26-11-11",
       "direction": "IMPORT",
-      "full_name": "Intelligent Octopus Go",
-      "display_name": "Intelligent Octopus Go",
-      "description": "With Intelligent Octopus Go EV tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times overnight.",
-      "is_variable": true,
-      "is_green": false,
-      "is_tracker": false,
-      "is_prepay": false,
-      "is_business": false,
-      "is_restricted": false,
-      "term": null,
-      "available_from": "2024-10-29T00:00:00Z",
-      "available_to": null,
-      "links": [
-        {
-          "href": "https://api.octopus.energy/v1/products/INTELLI-VAR-24-10-29/",
-          "method": "GET",
-          "rel": "self"
-        }
-      ],
-      "brand": "OCTOPUS_ENERGY"
-    },
-    {
-      "code": "INTELLI-VAR-OEV-24-07-17",
-      "direction": "IMPORT",
-      "full_name": "Intelligent Octopus Go - EV Saver",
-      "display_name": "Intelligent Octopus Go - EV Saver",
-      "description": "With our OEV exclusive Intelligent Octopus Go EV Saver tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times overnight.",
-      "is_variable": true,
-      "is_green": false,
-      "is_tracker": false,
-      "is_prepay": false,
-      "is_business": false,
-      "is_restricted": false,
-      "term": null,
-      "available_from": "2024-07-17T00:00:00+01:00",
-      "available_to": null,
-      "links": [
-        {
-          "href": "https://api.octopus.energy/v1/products/INTELLI-VAR-OEV-24-07-17/",
-          "method": "GET",
-          "rel": "self"
-        }
-      ],
-      "brand": "OCTOPUS_ENERGY"
-    },
-    {
-      "code": "LP-FIX-12M-26-02-06",
-      "direction": "IMPORT",
-      "full_name": "my london 12m fixed February 2026 v2",
-      "display_name": "my london 12m fixed plan",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "full_name": "Intelligent Octopus Go 12M Fixed November 2026 v1",
+      "display_name": "Intelligent Octopus Go 12M Fixed",
+      "description": "With Intelligent Octopus Go EV tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times.  This tariff has a \u00a350 exit fee",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
@@ -472,16 +424,88 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2026-02-06T14:00:00Z",
+      "available_from": "2026-11-11T00:00:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/LP-FIX-12M-26-02-06/",
+          "href": "https://api.oegb-kraken.energy/v1/products/IOG-SMB-FIX-12M-26-11-11/",
           "method": "GET",
           "rel": "self"
         }
       ],
-      "brand": "LONDON_POWER"
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "IOG-SMB-FIX-OEV-12M-26-11-11",
+      "direction": "IMPORT",
+      "full_name": "Intelligent Octopus Go 12M Fixed - EV Saver November 2026 v1",
+      "display_name": "Intelligent Octopus Go 12M Fixed - EV Saver",
+      "description": "With our OEV exclusive Intelligent Octopus Go EV Saver tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times.  This tariff has a \u00a350 exit fee.",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 12,
+      "available_from": "2026-11-11T00:00:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/IOG-SMB-FIX-OEV-12M-26-11-11/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "IOG-SMB-VAR-26-10-29",
+      "direction": "IMPORT",
+      "full_name": "Intelligent Octopus Go Max",
+      "display_name": "Intelligent Octopus Go Max",
+      "description": "With Intelligent Octopus Go EV tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times.",
+      "is_variable": true,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": null,
+      "available_from": "2026-10-29T00:00:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/IOG-SMB-VAR-26-10-29/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "IOG-SMB-VAR-26-11-04",
+      "direction": "IMPORT",
+      "full_name": "Intelligent Octopus Go",
+      "display_name": "Intelligent Octopus Go",
+      "description": "With Intelligent Octopus Go EV tariff, you have access to a super low electricity rate between 23:30 - 05:30 every night, plus it smart-charges your car at the cheapest and greenest times.",
+      "is_variable": true,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": null,
+      "available_from": "2026-11-05T00:00:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/IOG-SMB-VAR-26-11-04/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
     },
     {
       "code": "LP-SEG-EO-FIX-12M-24-04-05",
@@ -500,7 +524,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/LP-SEG-EO-FIX-12M-24-04-05/",
+          "href": "https://api.oegb-kraken.energy/v1/products/LP-SEG-EO-FIX-12M-24-04-05/",
           "method": "GET",
           "rel": "self"
         }
@@ -524,7 +548,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/LP-SEG-FIX-12M-20-11-11/",
+          "href": "https://api.oegb-kraken.energy/v1/products/LP-SEG-FIX-12M-20-11-11/",
           "method": "GET",
           "rel": "self"
         }
@@ -536,7 +560,7 @@
       "direction": "IMPORT",
       "full_name": "my london flexible plan",
       "display_name": "my london flexible plan",
-      "description": "my london flexible plan prices follow wholesale costs and update every 3 months.",
+      "description": "my london flexible plan prices fluctuate with the cost of supply and usually update every 3 months.",
       "is_variable": true,
       "is_green": false,
       "is_tracker": false,
@@ -548,7 +572,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/LP-VAR-23-04-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/LP-VAR-23-04-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -556,11 +580,11 @@
       "brand": "LONDON_POWER"
     },
     {
-      "code": "OE-FIX-12M-26-02-06",
+      "code": "OE-FIX-12M-26-11-09",
       "direction": "IMPORT",
-      "full_name": "Octopus 12M Fixed February 2026 v2",
+      "full_name": "Octopus 12M Fixed November 2026 v2",
       "display_name": "Octopus 12M Fixed",
-      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months with no exit fees.",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 12 months.  This tariff has a \u00a350 early exit fee per fuel.",
       "is_variable": false,
       "is_green": false,
       "is_tracker": false,
@@ -568,11 +592,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2026-02-06T14:00:00Z",
+      "available_from": "2026-11-09T17:30:00Z",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OE-FIX-12M-26-02-06/",
+          "href": "https://api.oegb-kraken.energy/v1/products/OE-FIX-12M-26-11-09/",
           "method": "GET",
           "rel": "self"
         }
@@ -580,11 +604,35 @@
       "brand": "OCTOPUS_ENERGY"
     },
     {
-      "code": "OUTGOING-SEG-EO-FIX-12M-24-04-05",
+      "code": "OE-FIX-18M-26-11-09",
+      "direction": "IMPORT",
+      "full_name": "Octopus 18M Fixed November 2026 v2",
+      "display_name": "Octopus 18M Fixed",
+      "description": "This fixed tariff locks in your unit rates and standing charges for 18 months.  This tariff has a \u00a375 early exit fee per fuel.",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 18,
+      "available_from": "2026-11-09T17:30:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/OE-FIX-18M-26-11-09/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "OUTGOING-PRIME-FIX-12M-26-06-23",
       "direction": "EXPORT",
-      "full_name": "Octopus Outgoing Smart Export Guarantee Export Only April 2024 v1",
-      "display_name": "Octopus Outgoing Smart Export Guarantee Export Only",
-      "description": "Outgoing SEG is our Smart Export Guarantee compliant export tariff for our export only accounts",
+      "full_name": "Prime Outgoing Octopus 12M Fixed June 2026 v1",
+      "display_name": "Prime Outgoing Octopus 12M Fixed",
+      "description": "Two rate export tariff that rewards you with a higher rate during the prime time of 4pm - 7pm",
       "is_variable": false,
       "is_green": true,
       "is_tracker": false,
@@ -592,11 +640,11 @@
       "is_business": false,
       "is_restricted": false,
       "term": 12,
-      "available_from": "2024-04-05T00:00:00+01:00",
+      "available_from": "2026-06-23T00:00:00+01:00",
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OUTGOING-SEG-EO-FIX-12M-24-04-05/",
+          "href": "https://api.oegb-kraken.energy/v1/products/OUTGOING-PRIME-FIX-12M-26-06-23/",
           "method": "GET",
           "rel": "self"
         }
@@ -620,7 +668,31 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OUTGOING-SEG-FIX-12M-20-07-07/",
+          "href": "https://api.oegb-kraken.energy/v1/products/OUTGOING-SEG-FIX-12M-20-07-07/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "OUTGOING-SEG-FIX-12M-26-10-21",
+      "direction": "EXPORT",
+      "full_name": "Octopus Outgoing Smart Export Guarantee October 2026 v1",
+      "display_name": "Octopus Outgoing Smart Export Guarantee",
+      "description": "Outgoing SEG is our Smart Export Guarantee compliant export tariff.  This tariff has a \u00a3100 exit fee.",
+      "is_variable": false,
+      "is_green": true,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 12,
+      "available_from": "2026-10-23T00:00:00+01:00",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/OUTGOING-SEG-FIX-12M-26-10-21/",
           "method": "GET",
           "rel": "self"
         }
@@ -644,7 +716,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/OUTGOING-VAR-24-10-26/",
+          "href": "https://api.oegb-kraken.energy/v1/products/OUTGOING-VAR-24-10-26/",
           "method": "GET",
           "rel": "self"
         }
@@ -668,7 +740,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/POWER-PACK-24-02-15/",
+          "href": "https://api.oegb-kraken.energy/v1/products/POWER-PACK-24-02-15/",
           "method": "GET",
           "rel": "self"
         }
@@ -692,7 +764,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/PREPAY-TWIN2-VAR-25-07-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/PREPAY-TWIN2-VAR-25-07-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -716,7 +788,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/PREPAY-TWIN3-VAR-25-07-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/PREPAY-TWIN3-VAR-25-07-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -740,7 +812,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/PREPAY-VAR-18-09-21/",
+          "href": "https://api.oegb-kraken.energy/v1/products/PREPAY-VAR-18-09-21/",
           "method": "GET",
           "rel": "self"
         }
@@ -764,7 +836,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/SMART-PREPAY-VAR-22-10-22/",
+          "href": "https://api.oegb-kraken.energy/v1/products/SMART-PREPAY-VAR-22-10-22/",
           "method": "GET",
           "rel": "self"
         }
@@ -788,7 +860,7 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/SNUG-24-11-07/",
+          "href": "https://api.oegb-kraken.energy/v1/products/SNUG-24-11-07/",
           "method": "GET",
           "rel": "self"
         }
@@ -800,7 +872,7 @@
       "direction": "IMPORT",
       "full_name": "Flexible Octopus",
       "display_name": "Flexible Octopus",
-      "description": "Flexible Octopus prices follow wholesale costs and update every 3 months.",
+      "description": "Flexible Octopus prices fluctuate with the cost of supply and usually update every 3 months.",
       "is_variable": true,
       "is_green": false,
       "is_tracker": false,
@@ -812,7 +884,31 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/VAR-22-11-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/VAR-22-11-01/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "ZERO-EXPORT-120M-22-05-01",
+      "direction": "EXPORT",
+      "full_name": "Octopus Zero Bills Export (10 years)",
+      "display_name": "Octopus Zero Export",
+      "description": "Octopus ZERO Export Tariff - For registered Octopus ZERO homes ONLY.  Fair use allowance: 4,000 kWh of net electricity import per year",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 120,
+      "available_from": "2022-05-01T00:00:00+01:00",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-EXPORT-120M-22-05-01/",
           "method": "GET",
           "rel": "self"
         }
@@ -836,7 +932,103 @@
       "available_to": null,
       "links": [
         {
-          "href": "https://api.octopus.energy/v1/products/ZERO-EXPORT-60M-22-05-01/",
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-EXPORT-60M-22-05-01/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "ZERO-EXPORT-60M-25-01-01",
+      "direction": "EXPORT",
+      "full_name": "Octopus Zero Bills (Upgrade) Export",
+      "display_name": "Octopus Zero Bills (Upgrade) Export",
+      "description": "For registered Octopus Zero Bills homes ONLY. Fair Use Allowance specific to the property, based on home size instead of annual consumption.",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 60,
+      "available_from": "2025-01-01T00:00:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-EXPORT-60M-25-01-01/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "ZERO-IMPORT-120M-22-05-01",
+      "direction": "IMPORT",
+      "full_name": "Octopus Zero Bills Import (10 years)",
+      "display_name": "Octopus Zero Import",
+      "description": "Octopus ZERO Import Tariff - For registered Octopus ZERO homes ONLY.  Fair use allowance: 4,000 kWh of net electricity import per year",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 120,
+      "available_from": "2022-05-01T00:00:00+01:00",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-IMPORT-120M-22-05-01/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "ZERO-IMPORT-60M-22-05-01",
+      "direction": "IMPORT",
+      "full_name": "Octopus Zero Bills Import (5 years)",
+      "display_name": "Octopus Zero Import",
+      "description": "Octopus ZERO Import Tariff - For registered Octopus ZERO homes ONLY.  Fair use allowance: 10MWh of net electricity import per year",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 60,
+      "available_from": "2022-05-01T00:00:00+01:00",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-IMPORT-60M-22-05-01/",
+          "method": "GET",
+          "rel": "self"
+        }
+      ],
+      "brand": "OCTOPUS_ENERGY"
+    },
+    {
+      "code": "ZERO-IMPORT-60M-25-01-01",
+      "direction": "IMPORT",
+      "full_name": "Octopus Zero Bills (Upgrade) Import",
+      "display_name": "Octopus Zero Bills (Upgrade) Import",
+      "description": "For registered Octopus Zero Bills homes ONLY. Fair Use Allowance specific to the property, based on home size instead of annual consumption.",
+      "is_variable": false,
+      "is_green": false,
+      "is_tracker": false,
+      "is_prepay": false,
+      "is_business": false,
+      "is_restricted": false,
+      "term": 60,
+      "available_from": "2025-01-01T00:00:00Z",
+      "available_to": null,
+      "links": [
+        {
+          "href": "https://api.oegb-kraken.energy/v1/products/ZERO-IMPORT-60M-25-01-01/",
           "method": "GET",
           "rel": "self"
         }

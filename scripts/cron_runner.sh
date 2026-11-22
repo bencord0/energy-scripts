@@ -6,7 +6,17 @@ if [[ -e config.sh ]]; then
 fi
 
 cargo run --bin migrate-db
+./scripts/save_agreements.sh
+
+# Tariffs: uncomment the one being billed. Agile is always kept as reference.
 ./scripts/save_agile_tariff_A.sh
+./scripts/save_intelligent_go_max_tariff_A.sh
+#./scripts/save_intelligent_go_tariff_A.sh
+#./scripts/save_flexible_tariff_A.sh
+#./scripts/save_go_tariff_A.sh
+#./scripts/save_cosy_tariff_A.sh
+#./scripts/save_flux_tariff_A.sh
+
 ./scripts/save_consumption_data.sh
 ./scripts/save_promotion_events.sh
 ./scripts/save_battery_data.sh yesterday

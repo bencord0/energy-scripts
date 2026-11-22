@@ -14,9 +14,9 @@ WITH export_slots AS (
         r.valid_from,
         r.valid_to,
         r.value
-    FROM tariff_rates AS r
+    FROM billed_tariff_rates AS r
     WHERE
-        r.product_code = $EXPORT_TARIFF
+        r.type = 'EXPORT'
         AND r.valid_from > $FROM_DATE
         AND r.value > (SELECT COALESCE(MAX(value), 0) FROM charging_slots)
         AND r.value > $FIXED_EXPORT_BARRIER
@@ -69,7 +69,7 @@ FROM candidate_slots
 ORDER BY value DESC;
 
 .mode ascii
-SELECT 'Outgoing Agile Discharging Slots
+SELECT 'Export Discharging Slots
 ';
 
 .mode table

@@ -1,24 +1,26 @@
 .mode table
-.param set $STANDING_CHARGE 48.79
 
 -- How much did I spend on energy each month?
 
-WITH costs AS (
+WITH daily AS (
     SELECT
-        SUBSTR(c.interval_start, 1, 7) as month,
+        SUBSTR(c.interval_start, 1, 10) as day,
         SUM(c.consumption * r.value) as cost,
-
-        -- Count of days in a month
-        COUNT(DISTINCT SUBSTR(c.interval_start, 1, 10)) * $STANDING_CHARGE as standing_charge
+        AVG(r.daily_standing_charge) as standing_charge
     FROM consumption AS c
-    LEFT JOIN tariff_rates AS r
+    JOIN billed_tariff_rates AS r
     ON
         c.interval_start = r.valid_from
-    JOIN products AS p
-    ON
-        r.product_code = p.product_code
-        AND r.tariff_code = p.tariff_code
-    WHERE p.type = 'IMPORT'
+    WHERE r.type = 'IMPORT'
+    GROUP BY day
+),
+
+costs AS (
+    SELECT
+        SUBSTR(day, 1, 7) as month,
+        SUM(cost) as cost,
+        SUM(standing_charge) as standing_charge
+    FROM daily
     GROUP BY month
 )
 

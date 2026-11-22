@@ -10,6 +10,7 @@ doctest = false
 [dependencies]
 axum = { version = "0.8", features = ["macros"] }
 chrono = { version = "0.4.44", features = ["serde"] }
+chrono-tz = "0.10.4"
 clap = { version = "4.6.1", features = ["derive"] }
 eyre = "0.6.12"
 hex = "0.4.3"

@@ -20,7 +20,6 @@ use power::{
     AppState,
     OctopusClient,
     migrate::{self, SqlType::{Real, Text}},
-    clients::octopus::Consumption,
     dates::{
         dt2str,
         str2dt,
@@ -58,28 +57,11 @@ async fn main() -> Result<(), Error> {
         .api_key(env::var("OCTOPUS_API_KEY")?);
 
     // XXX: On failure, attempt a read from cache
-    let mut from = from.map(|f| str2dt(&f).expect("not datestamp"));
+    let from = from.map(|f| str2dt(&f).expect("not datestamp"));
     let to = to.map(|t| str2dt(&t).expect("not datestamp"));
     let force = force.unwrap_or_default();
 
-    let mut consumption_data: Consumption = Default::default();
-    loop {
-        let response = octopus.get_consumption(&mpan, &serial, from, to).await?;
-        consumption_data.count += response.count;
-        consumption_data.results.extend(response.results);
-
-        let last = consumption_data.results.last();
-        from = last.map(|result| str2dt(&result.interval_start).unwrap());
-
-        if response.next.is_none() {
-            break
-        }
-
-        let condition: bool = from < to;
-        if !condition {
-            break
-        }
-    }
+    let consumption_data = octopus.get_consumption(&mpan, &serial, from, to).await?;
 
     // If request is successful, cache the response to a file
     let data_file = PathBuf::from(format!("data/consumption-{mpan}-{serial}.json"));
@@ -109,10 +91,13 @@ async fn main() -> Result<(), Error> {
                         account,
                         interval_start,
                         interval_end,
-                        consumption)
-                 VALUES($1, $2, $3, $4)
+                        consumption,
+                        consumption_source)
+                 VALUES($1, $2, $3, $4, 'octopus')
                  ON CONFLICT(account, interval_start)
-                 DO UPDATE SET consumption=excluded.consumption"
+                 DO UPDATE SET
+                    consumption=excluded.consumption,
+                    consumption_source=excluded.consumption_source"
             },
             TariffType::EXPORT => {
                 print!("INSERT generation for {account_id} at {interval_start}...");
@@ -120,10 +105,13 @@ async fn main() -> Result<(), Error> {
                         account,
                         interval_start,
                         interval_end,
-                        generation)
-                 VALUES($1, $2, $3, $4)
+                        generation,
+                        generation_source)
+                 VALUES($1, $2, $3, $4, 'octopus')
                  ON CONFLICT(account, interval_start)
-                 DO UPDATE SET generation=excluded.generation"
+                 DO UPDATE SET
+                    generation=excluded.generation,
+                    generation_source=excluded.generation_source"
             },
         };
 
@@ -152,6 +140,7 @@ async fn last_interval(conn: &mut SqliteConnection) -> Result<DateTime<Utc>, Err
             interval_start
         FROM consumption
         WHERE consumption IS NOT NULL
+          AND consumption_source IS NOT 'givenergy'
         ORDER BY interval_start DESC
         LIMIT 1"
     )
@@ -174,6 +163,8 @@ async fn check_db(conn: &mut SqliteConnection) -> Result<(), Error> {
             ("interval_end", Text),
             ("consumption", Real),
             ("generation", Real),
+            ("consumption_source", Text),
+            ("generation_source", Text),
         ],
     )
     .await

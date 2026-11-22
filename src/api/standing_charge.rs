@@ -18,9 +18,9 @@ pub struct StandingCharge {
 
 #[derive(Deserialize,Debug)]
 pub struct StandingChargeQuery {
-    start: String,
-    end: String,
-    r#type: String,
+    pub(crate) start: String,
+    pub(crate) end: String,
+    pub(crate) r#type: String,
 }
 
 pub async fn standing_charge(
@@ -43,14 +43,11 @@ pub async fn standing_charge(
             date(r.valid_from) as day,
             AVG(r.daily_standing_charge),
             COUNT(*) as slots
-        FROM tariff_rates as r
-        JOIN products as p
-          ON r.product_code = p.product_code
-         AND r.tariff_code = p.tariff_code
+        FROM billed_tariff_rates as r
 
         WHERE r.valid_from >= ? -- start
           AND r.valid_from <  ? -- end
-          AND p.type = ?        -- type
+          AND r.type = ?        -- type
 
         GROUP BY day
         ORDER BY day ASC"

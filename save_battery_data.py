@@ -10,6 +10,7 @@ from pathlib import Path
 from requests.auth import AuthBase
 
 from db_migrate import migrate_db
+from grid_slots import save_consumption_estimates
 
 try:
     # Added in 3.11
@@ -45,9 +46,16 @@ def main():
     page = args.page
     page_size = args.page_size
 
+    starts = []
     for inverter in inverters:
         data = fetch_inverter_data(date, inverter, force, page, page_size)
-        save_inverter_data(args.db, octopus_account, inverter, data)
+        starts += save_inverter_data(args.db, inverter, data)
+
+    # Combined across inverters, so one glitching counter can't skew a slot.
+    if octopus_account and starts:
+        connection = connect_db(args.db)
+        with connection:
+            save_consumption_estimates(connection, octopus_account, starts)
 
 
 def fetch_inverter_data(date, inverter, force, page, page_size):
@@ -84,9 +92,15 @@ def fetch_inverter_data(date, inverter, force, page, page_size):
 
     return data
 
-def save_inverter_data(db, octopus_account, inverter, data):
+def save_inverter_data(db, inverter, data):
+    """Save raw totals and per-slot battery deltas.
+
+    Returns the slot starts whose grid estimate may have changed, including
+    the previous day's 23:30 slot, which this file's first sample closes.
+    """
+    starts = []
     if len(data) < 1:
-        return
+        return starts
 
     migrate_db(db)
     connection = connect_db(db)
@@ -98,12 +112,15 @@ def save_inverter_data(db, octopus_account, inverter, data):
         end = start + timedelta(minutes=30)
         endtime = dt2str(end)
 
+        starts.append(dt2str(start - timedelta(minutes=30)))
+
         data = iter(data)
         prev = next(data)
+        save_raw_totals(connection, inverter, prev)
 
         for datum in data:
             datum_time = str2dt(datum["time"])
-            curr_time = dt2str(datum_time)
+            save_raw_totals(connection, inverter, datum)
 
             # Need to use daily numbers, as 'total' is corrupt
             prev_charge_total    = prev ["today"]["battery"]["charge"]
@@ -111,32 +128,8 @@ def save_inverter_data(db, octopus_account, inverter, data):
             prev_discharge_total = prev ["today"]["battery"]["discharge"]
             curr_discharge_total = datum["today"]["battery"]["discharge"]
 
-            # Totals are more reliable as they don't reset daily.
-            prev_import_total = prev ["total"]["grid"]["import"]
-            curr_import_total = datum["total"]["grid"]["import"]
-            prev_export_total = prev ["total"]["grid"]["export"]
-            curr_export_total = datum["total"]["grid"]["export"]
-
-            # Store raw values
-            # These may be sampled more frequently than once a minute, but
-            # are not evenly distributed.
-            connection.execute(
-                """INSERT OR REPLACE INTO battery_daily_totals
-                   (inverter, timestamp, charge, discharge)
-                   VALUES(?, ?, ?, ?)
-                """,
-                (inverter, curr_time, curr_charge_total, curr_discharge_total),
-            )
-            connection.execute(
-                """INSERT OR REPLACE INTO battery_grid_totals
-                   (inverter, timestamp, import, export)
-                   VALUES(?, ?, ?, ?)
-                """,
-                (inverter, curr_time, curr_import_total, curr_export_total),
-            )
-
             # We care about storing data for energy in 30-minute intervals
-            # BUG: last datapoint of the day is missing
+            # BUG: the day's last slot isn't saved to `charge`
             if datum_time < end:
                 continue
 
@@ -150,9 +143,6 @@ def save_inverter_data(db, octopus_account, inverter, data):
             discharge = curr_discharge_total - prev_discharge_total
             if detect_reset(prev_discharge_total, curr_discharge_total):
                 discharge = curr_discharge_total
-
-            grid_import = curr_import_total - prev_import_total
-            grid_export = curr_export_total - prev_export_total
 
             print(f"INSERT charge for {inverter} at {start}: charge={charge:.02f} discharge={discharge:.02f}")
 
@@ -169,21 +159,7 @@ def save_inverter_data(db, octopus_account, inverter, data):
                 (inverter, starttime, endtime, charge, discharge),
              )
 
-            if octopus_account:
-                print(f"INSERT grid for {inverter} at {start}: import={grid_import:.02f} export={grid_export:.02f}")
-                connection.execute(
-                    """INSERT OR REPLACE INTO
-                       consumption(
-                           account,
-                           interval_start,
-                           interval_end,
-                           consumption,
-                           generation)
-                       VALUES(?, ?, ?, ?, ?)
-                   """,
-                    (octopus_account, starttime, endtime, grid_import, grid_export),
-                 )
-
+            starts.append(starttime)
 
             prev = datum
             start = end
@@ -191,9 +167,45 @@ def save_inverter_data(db, octopus_account, inverter, data):
             starttime = dt2str(start)
             endtime = dt2str(end)
 
+    return starts
+
 
 def connect_db(uri):
     return sqlite3.connect(uri)
+
+
+def save_raw_totals(connection, inverter, datum):
+    """Store one sample's raw counters.
+
+    Samples may be more frequent than once a minute, but are not evenly
+    distributed. The grid totals don't reset daily, so slot estimates are
+    derived from them (see `grid_slots`).
+    """
+    timestamp = dt2str(str2dt(datum["time"]))
+    connection.execute(
+        """INSERT OR REPLACE INTO battery_daily_totals
+           (inverter, timestamp, charge, discharge)
+           VALUES(?, ?, ?, ?)
+        """,
+        (
+            inverter,
+            timestamp,
+            datum["today"]["battery"]["charge"],
+            datum["today"]["battery"]["discharge"],
+        ),
+    )
+    connection.execute(
+        """INSERT OR REPLACE INTO battery_grid_totals
+           (inverter, timestamp, import, export)
+           VALUES(?, ?, ?, ?)
+        """,
+        (
+            inverter,
+            timestamp,
+            datum["total"]["grid"]["import"],
+            datum["total"]["grid"]["export"],
+        ),
+    )
 
 
 def str2dt(dt: str) -> datetime:

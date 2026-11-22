@@ -1,4 +1,5 @@
--- Find the next cheapest time slots between the agile peak periods
+-- Find the next cheapest time slots on the billed import tariff
+-- (Agile half-hours, or the Intelligent Octopus off-peak window and dispatches)
 -- order by value, and select the cheapest of the day.
 
 -- Parameters
@@ -7,7 +8,7 @@
 -- 1.0 does not remove any slots, so don't go below that.
 -- 1.5 gives us longer candidates
 -- 2.0 to 4.0 gives us cheaper candidates, but smaller time windows
-.param set $GRANULARITY 8.0
+.param set $GRANULARITY 4.0
 
 -- Only inspect future time slots
 .param set $FROM_DATE strftime('%Y-%m-%dT%H:%M')
@@ -18,16 +19,15 @@ WITH raw_slots AS (
         r.valid_from,
         r.valid_to,
         r.value
-    FROM tariff_rates AS r
-    JOIN products AS p
-    ON
-        r.product_code = p.product_code
-        AND r.tariff_code = p.tariff_code
+    FROM billed_tariff_rates AS r
     WHERE
         r.valid_from > $FROM_DATE
-        AND p.type = 'IMPORT'
+        AND r.type = 'IMPORT'
 )
 SELECT * FROM raw_slots
+    -- Two-rate tariffs (Intelligent Octopus) tie on the peak price;
+    -- never let the cutoff fill up with those.
+    WHERE value < (SELECT MAX(value) FROM raw_slots)
     ORDER BY value ASC
     -- Draw a cutoff and filter out expensive slots after N rows.
     LIMIT (SELECT FLOOR(COUNT(*) / $GRANULARITY) FROM raw_slots);
@@ -38,15 +38,11 @@ INSERT INTO import_slots(valid_from, valid_to, value)
         r.valid_from,
         r.valid_to,
         r.value
-    FROM tariff_rates AS r
-    JOIN products AS p
-    ON
-        r.product_code = p.product_code
-        AND r.tariff_code = p.tariff_code
+    FROM billed_tariff_rates AS r
     WHERE
         r.valid_from > $FROM_DATE
         AND r.value <= 0
-        AND p.type = 'IMPORT';
+        AND r.type = 'IMPORT';
 
 -- Re-order back in chronological order
 -- Deduplicate as needed
@@ -113,9 +109,10 @@ FROM candidate_slots
 ORDER BY (duration_hours / (100 + value)) DESC;
 
 .mode ascii
-SELECT 'Agile Octopus Charging Slots
+SELECT 'Import Charging Slots
 ';
 
+--.mode csv
 .mode table
 SELECT
     SUBSTR(valid_from, 0, 17) AS start,
