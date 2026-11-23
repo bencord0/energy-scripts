@@ -1,9 +1,9 @@
 #!/bin/bash
-set -ex
-
 if [[ -e config.sh ]]; then
     source config.sh
 fi
+
+set -ex
 
 cargo run --bin migrate-db
 ./scripts/save_agreements.sh

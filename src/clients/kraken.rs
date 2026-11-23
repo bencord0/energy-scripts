@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     fmt,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::dates::str2dt;
@@ -18,6 +18,14 @@ const BACKEND_URL: &str = "https://api.backend.octopus.energy/v1/graphql/";
 
 // "Unable to find device for given account": no smart device is paired.
 const NO_DEVICE: &str = "KT-CT-4301";
+// "Too many requests": a field-specific limit (rateLimitInfo lists them, e.g.
+// flexPlannedDispatches 5/m, obtainKrakenToken 3/m) is exhausted.
+const RATE_LIMITED: &str = "KT-CT-1199";
+// Per-minute limits reset within this; hourly ones (completedDispatches
+// 300/h) fail rather than stall a cron run.
+const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
+// rateLimitInfo needs a token, and both obtainKrakenToken limits are per minute.
+const TOKEN_RATE_LIMIT_WAIT: Duration = Duration::from_secs(60);
 
 pub struct KrakenClient {
     http: reqwest::Client,
@@ -241,6 +249,31 @@ impl KrakenClient {
         variables: Value,
         token: Option<&str>,
     ) -> Result<T, Error> {
+        let result = self.send(url, query, &variables, token).await;
+        let Err(e) = &result else { return result };
+        let Some(errors) = e.downcast_ref::<GraphQLErrors>().filter(|g| g.has_code(RATE_LIMITED)) else {
+            return result;
+        };
+
+        let wait = match token {
+            Some(token) => {
+                let info: RateLimitInfoData = self.send(KRAKEN_URL, RATE_LIMIT_INFO_QUERY, &json!({}), Some(token)).await?;
+                rate_limit_wait(&info.rate_limit_info, &errors.fields(), unix_now())?
+            }
+            None => TOKEN_RATE_LIMIT_WAIT,
+        };
+        eprintln!("Kraken rate limited {}; retrying in {}s", errors.fields().join(", "), wait.as_secs());
+        tokio::time::sleep(wait).await;
+        self.send(url, query, &variables, token).await
+    }
+
+    async fn send<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        query: &str,
+        variables: &Value,
+        token: Option<&str>,
+    ) -> Result<T, Error> {
         let mut request = self.http
             .post(url)
             .timeout(Duration::from_secs(15))
@@ -273,6 +306,9 @@ struct GraphQLResponse<T> {
 pub struct GraphQLError {
     pub message: String,
     pub extensions: Option<GraphQLErrorExtensions>,
+    /// Field names and list indexes down to the failing field.
+    #[serde(default)]
+    pub path: Vec<Value>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -290,6 +326,13 @@ impl GraphQLErrors {
         self.0.iter().any(|e| {
             e.extensions.as_ref().and_then(|x| x.error_code.as_deref()) == Some(code)
         })
+    }
+
+    /// The failing field of each error: the last name in its path.
+    fn fields(&self) -> Vec<&str> {
+        self.0.iter()
+            .filter_map(|e| e.path.iter().rev().find_map(Value::as_str))
+            .collect()
     }
 }
 
@@ -309,6 +352,85 @@ impl<T> GraphQLResponse<T> {
         }
         self.data.ok_or_eyre("graphql: response has neither data nor errors")
     }
+}
+
+const RATE_LIMIT_INFO_QUERY: &str = "query RateLimitInfo {
+    rateLimitInfo {
+        pointsAllowanceRateLimit { ttl isBlocked }
+        fieldSpecificRateLimits(first: 100) {
+            edges { node { field rate ttl isBlocked } }
+        }
+    }
+}";
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct RateLimitInfoData {
+    rate_limit_info: RateLimitInfo,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct RateLimitInfo {
+    points_allowance_rate_limit: Option<RateLimitWindow>,
+    field_specific_rate_limits: FieldRateLimits,
+}
+
+#[derive(Deserialize, Debug)]
+struct FieldRateLimits {
+    edges: Vec<FieldRateLimitEdge>,
+}
+
+#[derive(Deserialize, Debug)]
+struct FieldRateLimitEdge {
+    node: FieldRateLimit,
+}
+
+/// `field` is `Type.name` (e.g. `Query.flexPlannedDispatches`); `rate` is
+/// e.g. `5/m`. A field can have several limits.
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct FieldRateLimit {
+    field: String,
+    rate: String,
+    #[serde(flatten)]
+    window: RateLimitWindow,
+}
+
+/// `ttl` is the UNIX time the current window ends, blocked or not.
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct RateLimitWindow {
+    ttl: i64,
+    is_blocked: bool,
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+/// Until the latest window blocking any of `fields` (or the points allowance)
+/// ends. Zero when nothing is blocked any more.
+fn rate_limit_wait(info: &RateLimitInfo, fields: &[&str], now: i64) -> Result<Duration, Error> {
+    let blocked: Vec<(&str, &RateLimitWindow)> = info.field_specific_rate_limits.edges.iter()
+        .map(|e| &e.node)
+        .filter(|l| l.window.is_blocked)
+        .filter(|l| fields.iter().any(|f| l.field.rsplit('.').next() == Some(*f)))
+        .map(|l| (l.rate.as_str(), &l.window))
+        .chain(info.points_allowance_rate_limit.iter()
+            .filter(|w| w.is_blocked)
+            .map(|w| ("points allowance", w)))
+        .collect();
+
+    let Some((rate, window)) = blocked.into_iter().max_by_key(|(_, w)| w.ttl) else {
+        return Ok(Duration::ZERO);
+    };
+    // A second past the window end, in case the clocks disagree.
+    let wait = Duration::from_secs((window.ttl - now + 1).max(0) as u64);
+    if wait > MAX_RATE_LIMIT_WAIT {
+        return Err(eyre!("{} rate limited ({rate}) until UNIX time {}", fields.join(", "), window.ttl));
+    }
+    Ok(wait)
 }
 
 fn or_empty_without_device<T: Default>(result: Result<T, Error>) -> Result<T, Error> {
@@ -745,5 +867,69 @@ mod tests {
 
         let response: GraphQLResponse<CompletedDispatchesData> = serde_json::from_str(body).unwrap();
         assert!(or_empty_without_device(response.into_result()).is_err());
+    }
+
+    // Shapes as returned on 2026-11-23 (see src/bin/debug_rate_limit.rs).
+    const NOW: i64 = 1_795_450_570;
+
+    fn rate_limit_info(flex_blocked: bool, points_blocked: bool) -> RateLimitInfo {
+        let body = json!({
+            "data": {"rateLimitInfo": {
+                "pointsAllowanceRateLimit": {"ttl": 1_795_453_857, "isBlocked": points_blocked},
+                "fieldSpecificRateLimits": {"edges": [
+                    {"node": {"field": "Query.flexPlannedDispatches", "rate": "5/m", "ttl": 1_795_450_599, "isBlocked": flex_blocked}},
+                    {"node": {"field": "Query.completedDispatches", "rate": "300/h", "ttl": 1_795_451_319, "isBlocked": true}},
+                    {"node": {"field": "Mutation.obtainKrakenToken", "rate": "50/m", "ttl": 1_795_450_599, "isBlocked": false}},
+                ]},
+            }},
+        });
+        let response: GraphQLResponse<RateLimitInfoData> = serde_json::from_value(body).unwrap();
+        response.into_result().unwrap().rate_limit_info
+    }
+
+    #[test]
+    fn rate_limited_errors_name_their_field() -> Result<(), Error> {
+        let body = r#"{
+            "data": {"flexPlannedDispatches": null},
+            "errors": [{
+                "message": "Too many requests.",
+                "path": ["flexPlannedDispatches"],
+                "extensions": {"errorCode": "KT-CT-1199", "errorType": "AUTHORIZATION"}
+            }, {
+                "message": "Too many requests.",
+                "path": ["account", "properties", 0, "electricityMeterPoints", 0, "agreements", 1, "timeOfUseScheme"],
+                "extensions": {"errorCode": "KT-CT-1199"}
+            }]
+        }"#;
+
+        let response: GraphQLResponse<FlexPlannedDispatchesData> = serde_json::from_str(body)?;
+        let err = response.into_result().unwrap_err();
+        let errors = err.downcast_ref::<GraphQLErrors>().unwrap();
+        assert!(errors.has_code(RATE_LIMITED));
+        assert_eq!(errors.fields(), ["flexPlannedDispatches", "timeOfUseScheme"]);
+        Ok(())
+    }
+
+    #[test]
+    fn waits_for_the_blocked_fields_window() -> Result<(), Error> {
+        let wait = rate_limit_wait(&rate_limit_info(true, false), &["flexPlannedDispatches"], NOW)?;
+        assert_eq!(wait, Duration::from_secs(30));
+        Ok(())
+    }
+
+    #[test]
+    fn retries_at_once_when_no_longer_blocked() -> Result<(), Error> {
+        let wait = rate_limit_wait(&rate_limit_info(false, false), &["flexPlannedDispatches"], NOW)?;
+        assert_eq!(wait, Duration::ZERO, "other blocked fields don't delay this one");
+        Ok(())
+    }
+
+    #[test]
+    fn long_blocks_fail_instead_of_waiting() {
+        let err = rate_limit_wait(&rate_limit_info(false, false), &["completedDispatches"], NOW).unwrap_err();
+        assert!(err.to_string().contains("300/h"), "{err}");
+
+        let err = rate_limit_wait(&rate_limit_info(true, true), &["flexPlannedDispatches"], NOW).unwrap_err();
+        assert!(err.to_string().contains("points allowance"), "{err}");
     }
 }
