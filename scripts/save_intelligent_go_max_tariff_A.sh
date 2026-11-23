@@ -19,6 +19,7 @@ function save_tariff_rates() {
 # day/night windows come from the account's agreement (save_agreements.sh).
 cargo_run save_dispatches \
     --account-id "${ACCOUNT_ID}" \
+    --ignore-server-errors \
     data/power.sqlite3
 
 save_tariff_rates IOG-SMB-VAR-26-10-29 E-1R-IOG-SMB-VAR-26-10-29-A "$@"

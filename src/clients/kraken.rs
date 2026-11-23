@@ -21,6 +21,9 @@ const NO_DEVICE: &str = "KT-CT-4301";
 // "Too many requests": a field-specific limit (rateLimitInfo lists them, e.g.
 // flexPlannedDispatches 5/m, obtainKrakenToken 3/m) is exhausted.
 const RATE_LIMITED: &str = "KT-CT-1199";
+// errorType on internal upstream failures, e.g. KT-CT-4360 "Device status could
+// not be fetched", which nulls the whole `devices` list.
+const SERVER_ERROR: &str = "APPLICATION";
 // Per-minute limits reset within this; hourly ones (completedDispatches
 // 300/h) fail rather than stall a cron run.
 const MAX_RATE_LIMIT_WAIT: Duration = Duration::from_secs(120);
@@ -171,7 +174,7 @@ impl KrakenClient {
                 Some(&token),
             )
             .await?;
-        Ok(data.devices)
+        Ok(data.devices.unwrap_or_default())
     }
 
     /// Recent history only; callers persist it.
@@ -287,12 +290,19 @@ impl KrakenClient {
         let response = request.send().await?;
         let status = response.status();
         let body = response.text().await?;
-        let parsed: GraphQLResponse<T> = serde_json::from_str(&body).map_err(|e| {
-            let snippet: String = body.chars().take(300).collect();
-            eyre!("{url} returned {status}, not GraphQL JSON ({e}): {snippet}")
-        })?;
-        parsed.into_result()
+        parse_response(url, status, &body)
     }
+}
+
+/// Errors are checked before `data` is typed: alongside errors, `data` may be
+/// null or partial in ways the typed structs reject.
+fn parse_response<T: DeserializeOwned>(url: &str, status: reqwest::StatusCode, body: &str) -> Result<T, Error> {
+    let parsed: GraphQLResponse<Value> = serde_json::from_str(body).map_err(|e| {
+        let snippet: String = body.chars().take(300).collect();
+        eyre!("{url} returned {status}, not GraphQL JSON ({e}): {snippet}")
+    })?;
+    serde_json::from_value(parsed.into_result()?)
+        .map_err(|e| eyre!("{url}: unexpected GraphQL data shape ({e})"))
 }
 
 #[derive(Deserialize, Debug)]
@@ -315,6 +325,7 @@ pub struct GraphQLError {
 #[serde(rename_all = "camelCase")]
 pub struct GraphQLErrorExtensions {
     pub error_code: Option<String>,
+    pub error_type: Option<String>,
 }
 
 /// Kept typed inside the eyre report so callers can match on `errorCode`.
@@ -325,6 +336,12 @@ impl GraphQLErrors {
     pub fn has_code(&self, code: &str) -> bool {
         self.0.iter().any(|e| {
             e.extensions.as_ref().and_then(|x| x.error_code.as_deref()) == Some(code)
+        })
+    }
+
+    pub fn is_server_error(&self) -> bool {
+        self.0.iter().any(|e| {
+            e.extensions.as_ref().and_then(|x| x.error_type.as_deref()) == Some(SERVER_ERROR)
         })
     }
 
@@ -568,8 +585,7 @@ pub struct KrakenTariff {
 
 #[derive(Deserialize, Debug)]
 struct DevicesData {
-    #[serde(default)]
-    devices: Vec<Device>,
+    devices: Option<Vec<Device>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -867,6 +883,38 @@ mod tests {
 
         let response: GraphQLResponse<CompletedDispatchesData> = serde_json::from_str(body).unwrap();
         assert!(or_empty_without_device(response.into_result()).is_err());
+    }
+
+    // As returned on 2026-11-23.
+    const DEVICE_STATUS_ERROR: &str = r#"{"errors":[{"message":"Device status could not be fetched.","locations":[{"line":7,"column":25}],"path":["devices",0,"status"],"extensions":{"errorType":"APPLICATION","errorCode":"KT-CT-4360","errorDescription":"An internal error occurred. Please try again later."}}],"data":{"devices":null}}"#;
+
+    #[test]
+    fn device_status_failure_is_a_server_error() {
+        let err = parse_response::<DevicesData>(KRAKEN_URL, reqwest::StatusCode::OK, DEVICE_STATUS_ERROR).unwrap_err();
+        let errors = err.downcast_ref::<GraphQLErrors>().expect("typed GraphQL errors, not a shape error");
+        assert!(errors.has_code("KT-CT-4360"));
+        assert!(errors.is_server_error());
+        assert_eq!(errors.fields(), ["status"]);
+    }
+
+    #[test]
+    fn other_errors_are_not_server_errors() {
+        let body = r#"{"data": null, "errors": [{"message": "Unauthorized.", "extensions": {"errorCode": "KT-CT-1111"}}]}"#;
+        let err = parse_response::<DevicesData>(KRAKEN_URL, reqwest::StatusCode::OK, body).unwrap_err();
+        assert!(!err.downcast_ref::<GraphQLErrors>().unwrap().is_server_error());
+    }
+
+    #[test]
+    fn null_devices_without_errors_is_empty() -> Result<(), Error> {
+        let data: DevicesData = parse_response(KRAKEN_URL, reqwest::StatusCode::OK, r#"{"data": {"devices": null}}"#)?;
+        assert!(data.devices.unwrap_or_default().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn mistyped_data_is_a_shape_error() {
+        let err = parse_response::<DevicesData>(KRAKEN_URL, reqwest::StatusCode::OK, r#"{"data": {"devices": 1}}"#).unwrap_err();
+        assert!(err.to_string().contains("unexpected GraphQL data shape"), "{err}");
     }
 
     // Shapes as returned on 2026-11-23 (see src/bin/debug_rate_limit.rs).
