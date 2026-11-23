@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e -o pipefail
 
-cargo run --bin save_consumption_data -- \
+cargo_run save_consumption_data \
     --account-id "${ACCOUNT_ID}" \
     --mpan "${IMPORT_MPAN}" \
     --serial "${SERIAL}" \
@@ -9,7 +9,7 @@ cargo run --bin save_consumption_data -- \
     --force true \
     data/power.sqlite3
 
-cargo run --bin save_consumption_data -- \
+cargo_run save_consumption_data \
     --account-id "${ACCOUNT_ID}" \
     --mpan "${EXPORT_MPAN}" \
     --serial "${SERIAL}" \

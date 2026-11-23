@@ -5,7 +5,11 @@ fi
 
 set -ex
 
-cargo run --bin migrate-db
+if [[ -n "${ENERGY_SCRIPTS_BIN_PATH}" ]]; then
+    cargo install --locked --path . --root "${ENERGY_SCRIPTS_BIN_PATH}"
+fi
+
+cargo_run migrate-db
 ./scripts/save_agreements.sh
 
 # Tariffs: uncomment the one being billed. Agile is always kept as reference.

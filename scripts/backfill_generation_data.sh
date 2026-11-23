@@ -5,7 +5,7 @@ function save_generation() {
     FROM="${1}"
     TO="${2}"
 
-    cargo run --bin save_generation_data -- \
+    cargo_run save_generation_data \
         --serial "${INVERTER_SERIAL}" \
         --from   "${FROM}" \
         --to     "${TO}" \

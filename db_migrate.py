@@ -1,11 +1,10 @@
 """Database migrations, delegated to the Rust `migrate-db` binary.
 
 The schema has a single source of truth: `src/migrate.rs`. Python collectors
-call `migrate_db()` here instead of carrying their own `CREATE TABLE`
-statements, so there is nothing to keep in sync.
+call `migrate_db()` here instead of carrying their own `CREATE TABLE` statements.
 
-Set POWER_MIGRATE_DB to a prebuilt binary to skip cargo (useful where the
-toolchain isn't installed).
+Set ENERGY_SCRIPTS_BIN_PATH to run pre-compiled binaries, otherwise this
+script will use `cargo_run` to compile them from local source.
 
 Example:
     from db_migrate import migrate_db
@@ -23,14 +22,16 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 
 def migrate_command(db_path):
-    override = os.environ.get('POWER_MIGRATE_DB')
-    if override:
-        return [override, str(db_path)]
+    bin_path = os.environ.get('ENERGY_SCRIPTS_BIN_PATH')
+    if bin_path:
+        return [str(Path(bin_path) / 'migrate-db'), str(db_path)]
 
-    # `cargo run` rebuilds when the Rust source changes, so the migration can
-    # never be a stale binary.
+    # `cargo run` rebuilds when the Rust source changes,
+    # so the migration can use an up-to-date binary.
+    cargo_flags = os.environ.get('CARGO_FLAGS')
     return [
-        'cargo', 'run', '--quiet', '--bin', 'migrate-db', '--', str(db_path),
+        'cargo', 'run', '--quiet', *([cargo_flags] if cargo_flags else []),
+        '--bin', 'migrate-db', '--', str(db_path),
     ]
 
 

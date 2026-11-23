@@ -1,0 +1,43 @@
+#!/bin/bash
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# GivEnergy
+export GIVENERGY_API_TOKEN=
+export INVERTER_IDS="CHXXXXXXXX,CGXXXXXXXX"
+
+# Octopus
+export OCTOPUS_API_KEY=
+export ACCOUNT_ID="A-12345678"
+export IMPORT_MPAN="2700000000000"
+export EXPORT_MPAN="2700000000000"
+export SERIAL="00A0000000"
+
+# FoxESS
+export FOXESS_API_KEY=
+export INVERTER_SERIAL="00FS000000XX000"
+
+# Ohme
+export OHME_USERNAME=ohme@example.com
+export OHME_PASSWORD=
+export OHME_USER_ID=
+
+# To precompile the binaries
+# `cargo install --path . --locked --root "${ENERGY_SCRIPTS_BIN_PATH}`
+# then call
+# `${ENERGY_SCRIPTS_BIN_PATH}/<name>`
+#
+# When unset, use `cargo run --bin <name>` instead.
+export ENERGY_SCRIPTS_BIN_PATH=
+
+function cargo_run() {
+    local name="${1}"
+    shift
+
+    if [[ -n "${ENERGY_SCRIPTS_BIN_PATH}" ]]; then
+        "${ENERGY_SCRIPTS_BIN_PATH}/${name}" "$@"
+    else
+        cargo run --bin "${name}" -- "$@"
+    fi
+}
+export -f cargo_run

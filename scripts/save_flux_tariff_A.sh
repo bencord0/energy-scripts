@@ -8,7 +8,7 @@ function save_tariff_rates() {
     TARIFF_CODE="${2}"
     shift 2
 
-    cargo run --bin save_tariff_rates -- \
+    cargo_run save_tariff_rates \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
         "$@" \

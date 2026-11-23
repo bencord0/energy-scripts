@@ -8,7 +8,7 @@ function save_tariff_rates() {
     TARIFF_CODE="${2}"
     shift 2
 
-    cargo run --bin save_tariff_rates -- \
+    cargo_run save_tariff_rates \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
         "$@" \
@@ -17,7 +17,7 @@ function save_tariff_rates() {
 
 # Dispatches re-price slots to off-peak, so must land before the rates. The
 # day/night windows come from the account's agreement (save_agreements.sh).
-cargo run --bin save_dispatches -- \
+cargo_run save_dispatches \
     --account-id "${ACCOUNT_ID}" \
     data/power.sqlite3
 

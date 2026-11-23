@@ -5,7 +5,7 @@ function save_carcharge() {
     FROM="${1}"
     TO="${2}"
 
-    cargo run --bin save_carcharge_data -- \
+    cargo_run save_carcharge_data \
         --username "${OHME_USERNAME}" \
         --password "${OHME_PASSWORD}" \
         --user-id  "${OHME_USER_ID}" \

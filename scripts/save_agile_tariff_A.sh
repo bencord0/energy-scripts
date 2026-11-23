@@ -5,7 +5,7 @@ function save_agile_tariff_rates() {
     PRODUCT_CODE="${1}"
     TARIFF_CODE="${2}"
 
-    cargo run --bin save_tariff_rates -- \
+    cargo_run save_tariff_rates \
         --product-code "${PRODUCT_CODE}" \
         --tariff-code "${TARIFF_CODE}" \
         data/power.sqlite3
